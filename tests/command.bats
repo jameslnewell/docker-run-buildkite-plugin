@@ -8,9 +8,6 @@ setup() {
   export PLUGIN_DIR="${PLUGIN_DIR:-.}"
   export BUILDKITE_JOB_ID="test-job-id"
   export BUILDKITE_PLUGIN_DOCKER_RUN_IMAGE="ubuntu:24.04"
-  export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND=""
-  export BUILDKITE_PLUGIN_DOCKER_RUN_WORKDIR=""
-  export BUILDKITE_PLUGIN_DOCKER_RUN_ENTRYPOINT=""
 }
 
 teardown() {
@@ -18,6 +15,8 @@ teardown() {
 }
 
 @test "Runs with image only" {
+  export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND=""
+
   stub docker \
     "pull ubuntu:24.04 : echo 'Pulling ubuntu:24.04'" \
     "create --name docker-run-buildkite-plugin-test-job-id ubuntu:24.04 : echo 'Created container'" \
@@ -32,6 +31,7 @@ teardown() {
 }
 
 @test "Passes command as string" {
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_0
   export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND="echo hello"
 
   stub docker \
@@ -60,6 +60,8 @@ teardown() {
 }
 
 @test "Passes environment variables" {
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_0
+  export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND=""
   export BUILDKITE_PLUGIN_DOCKER_RUN_ENV_0="FOO=bar"
   export BUILDKITE_PLUGIN_DOCKER_RUN_ENV_1="BAZ=qux"
 
@@ -74,6 +76,8 @@ teardown() {
 }
 
 @test "Passes volume mounts" {
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_0
+  export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND=""
   export BUILDKITE_PLUGIN_DOCKER_RUN_VOLUME_0="/host:/container"
   export BUILDKITE_PLUGIN_DOCKER_RUN_VOLUME_1="/another:/mount"
 
@@ -88,6 +92,8 @@ teardown() {
 }
 
 @test "Passes workdir option" {
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_0
+  export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND=""
   export BUILDKITE_PLUGIN_DOCKER_RUN_WORKDIR="/app"
 
   stub docker \
@@ -101,6 +107,8 @@ teardown() {
 }
 
 @test "Passes entrypoint option" {
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_0
+  export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND=""
   export BUILDKITE_PLUGIN_DOCKER_RUN_ENTRYPOINT="/bin/bash"
 
   stub docker \
@@ -114,7 +122,10 @@ teardown() {
 }
 
 @test "Fails when docker pull fails" {
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_0
   export BUILDKITE_PLUGIN_DOCKER_RUN_IMAGE="invalid/image:nonexistent"
+  export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND=""
+
   stub docker \
     "pull invalid/image:nonexistent : exit 1" \
     "rm -f docker-run-buildkite-plugin-test-job-id : true"
