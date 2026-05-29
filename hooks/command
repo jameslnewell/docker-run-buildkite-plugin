@@ -32,11 +32,12 @@ done
 
 mapfile -t CMD_ARGS < <(plugin_read_list "BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND")
 
-docker create \
-  --name "$CONTAINER_NAME" \
-  "${CREATE_ARGS[@]}" \
-  "$IMAGE" \
-  "${CMD_ARGS[@]}"
+declare -a DOCKER_ARGS=(create --name "$CONTAINER_NAME")
+DOCKER_ARGS+=("${CREATE_ARGS[@]}")
+DOCKER_ARGS+=("$IMAGE")
+DOCKER_ARGS+=("${CMD_ARGS[@]}")
+
+docker "${DOCKER_ARGS[@]}"
 
 echo "+++ :docker: Running"
 docker start --attach "$CONTAINER_NAME"
