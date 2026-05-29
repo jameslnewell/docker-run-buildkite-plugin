@@ -70,11 +70,7 @@ else
 fi
 
 if [[ -n "${BUILDKITE_COMMAND:-}" ]]; then
-  if [[ "${#CMD_ARGS[@]}" -gt 0 ]]; then
-    echo "Warning: the step has a command but the plugin's 'command' option is also set. The step's command will be ignored."
-  else
-    echo "Warning: the step has a command but the plugin's 'command' option is not set. The container will run with the image's default entrypoint only. Set the plugin's 'command' option to run a command inside the container."
-  fi
+  echo "Warning: the step's command will not be run inside the container. Specify the command via the docker-run plugin's 'command' option instead."
 fi
 
 declare -a DOCKER_ARGS=(create --name "$CONTAINER_NAME")

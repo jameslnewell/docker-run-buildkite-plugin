@@ -55,7 +55,7 @@ teardown() {
   assert_success
 }
 
-@test "Warns when step has a command but plugin command is not set" {
+@test "Warns when step has a command" {
   unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND
   unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_0
   export BUILDKITE_COMMAND="make test"
@@ -74,25 +74,7 @@ teardown() {
   unset BUILDKITE_COMMAND
 }
 
-@test "Warns when both step command and plugin command are set" {
-  export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND="echo plugin"
-  export BUILDKITE_COMMAND="echo step"
-
-  stub docker \
-    "pull ubuntu:24.04 : true" \
-    "create --name docker-run-buildkite-plugin-test-job-id ubuntu:24.04 echo plugin : true" \
-    "start docker-run-buildkite-plugin-test-job-id : true" \
-    "logs --follow docker-run-buildkite-plugin-test-job-id : true" \
-    "wait docker-run-buildkite-plugin-test-job-id : echo 0"
-
-  run "$PLUGIN_DIR/hooks/command"
-
-  assert_success
-  assert_output --partial "Warning:"
-  unset BUILDKITE_COMMAND
-}
-
-@test "No warning when only plugin command is set" {
+@test "No warning when step has no command" {
   export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND="echo plugin"
   unset BUILDKITE_COMMAND
 
