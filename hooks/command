@@ -36,7 +36,7 @@ docker create \
   --name "$CONTAINER_NAME" \
   "${CREATE_ARGS[@]}" \
   "$IMAGE" \
-  "${CMD_ARGS[@]}"
+  ${CMD_ARGS[@]}
 
 echo "+++ :docker: Running"
 docker start --attach "$CONTAINER_NAME"

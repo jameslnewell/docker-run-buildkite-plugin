@@ -115,6 +115,7 @@ teardown() {
 
 @test "Fails when image is missing" {
   unset BUILDKITE_PLUGIN_DOCKER_RUN_IMAGE
+  stub docker "pull : exit 1"
 
   run "$PLUGIN_DIR/hooks/command"
 
