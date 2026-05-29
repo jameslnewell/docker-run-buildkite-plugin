@@ -42,8 +42,6 @@ done
 
 if [[ "${BUILDKITE_PLUGIN_DOCKER_RUN_DOCKER_FROM_DOCKER:-false}" == "true" ]]; then
   DOCKER_RUN_TMPDIR="$(mktemp -d)"
-  cp "${DOCKER_CONFIG}/config.json" "${DOCKER_RUN_TMPDIR}/config.json"
-  chmod 0644 "${DOCKER_RUN_TMPDIR}/config.json"
   DOCKER_HOST_VALUE="${DOCKER_HOST:-unix:///var/run/docker.sock}"
   if [[ "$DOCKER_HOST_VALUE" == unix://* ]]; then
     DOCKER_SOCKET="${DOCKER_HOST_VALUE#unix://}"
@@ -52,7 +50,14 @@ if [[ "${BUILDKITE_PLUGIN_DOCKER_RUN_DOCKER_FROM_DOCKER:-false}" == "true" ]]; t
     # TCP daemon — no socket to mount; pass DOCKER_HOST so the container's docker client connects directly
     CREATE_ARGS+=(-e "DOCKER_HOST=${DOCKER_HOST_VALUE}")
   fi
-  CREATE_ARGS+=(-v "${DOCKER_RUN_TMPDIR}/config.json:/root/.docker/config.json")
+  # Copy rather than directly mounting: the original file is owned by the agent user (mode 0600)
+  # and may not be readable inside the container without --userns host. A 0644 copy avoids that.
+  DOCKER_CONFIG_DIR="${DOCKER_CONFIG:-${HOME}/.docker}"
+  if [[ -f "${DOCKER_CONFIG_DIR}/config.json" ]]; then
+    cp "${DOCKER_CONFIG_DIR}/config.json" "${DOCKER_RUN_TMPDIR}/config.json"
+    chmod 0644 "${DOCKER_RUN_TMPDIR}/config.json"
+    CREATE_ARGS+=(-v "${DOCKER_RUN_TMPDIR}/config.json:/root/.docker/config.json")
+  fi
   echo "$DOCKER_RUN_TMPDIR" > "/tmp/docker-run-buildkite-plugin-${BUILDKITE_JOB_ID}.tmpdir"
 fi
 

@@ -24,7 +24,10 @@ configuration:
       description: "Environment variables as KEY=VALUE"
     volume:
       type: array
-      description: "Volume mounts as host:container"
+      description: "Volume mounts as host:container. Relative host paths (starting with .) are resolved against pwd."
+    docker_from_docker:
+      type: boolean
+      description: "Mount the host Docker socket and a readable copy of the Docker config into the container, enabling Docker-from-Docker"
   required:
     - image
   additionalProperties: false

@@ -15,7 +15,8 @@ Run a command in a Docker image with phase-level timing and automatic cleanup. E
 | `workdir` | string | — | Override working directory in the container |
 | `entrypoint` | string | — | Override container entrypoint |
 | `env` | array | — | Environment variables as `KEY=VALUE` |
-| `volume` | array | — | Volume mounts as `host:container` |
+| `volume` | array | — | Volume mounts as `host:container`. Relative host paths (starting with `.`) are resolved against `pwd`. |
+| `docker_from_docker` | boolean | — | Mount the host Docker socket and a readable copy of the Docker config, enabling Docker-from-Docker. Socket path is derived from `DOCKER_HOST` (defaults to `unix:///var/run/docker.sock`). |
 
 ## Usage
 
@@ -45,6 +46,35 @@ steps:
             - bash
             - -c
             - "apt-get update && apt-get install -y curl"
+```
+
+Mount the current checkout and run tests with Docker-from-Docker enabled so the container can build and push images:
+
+```yaml
+steps:
+  - plugins:
+      - jameslnewell/docker-run#v1.0.0:
+          image: node:20
+          workdir: /workdir
+          volume:
+            - .:/workdir
+            - /workdir/node_modules
+          docker_from_docker: true
+          env:
+            - CI=true
+```
+
+Pass through AWS region environment variables:
+
+```yaml
+steps:
+  - plugins:
+      - jameslnewell/docker-run#v1.0.0:
+          image: amazon/aws-cli:latest
+          command: ecr get-login-password
+          env:
+            - AWS_REGION
+            - AWS_DEFAULT_REGION
 ```
 
 ## How It Works
