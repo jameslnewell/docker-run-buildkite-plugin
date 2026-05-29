@@ -128,8 +128,8 @@ teardown() {
   export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND=""
 
   stub docker \
-    "pull invalid/image:nonexistent : exit 1" \
-    "rm -f docker-run-buildkite-plugin-test-job-id : true"
+    "pull * : exit 1" \
+    "rm -f * : true"
 
   run "$PLUGIN_DIR/hooks/command"
 
