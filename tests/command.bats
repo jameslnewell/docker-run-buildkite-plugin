@@ -45,6 +45,7 @@ teardown() {
 }
 
 @test "Passes command as array" {
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND
   export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_0="bash"
   export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_1="-c"
   export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_2="echo hello"
