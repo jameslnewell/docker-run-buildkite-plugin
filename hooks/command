@@ -30,13 +30,17 @@ for v in "${VOLUMES[@]}"; do
   CREATE_ARGS+=(-v "$v")
 done
 
-mapfile -t CMD_ARGS < <(plugin_read_list "BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND")
+if [[ -n "${BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_0:-}" ]]; then
+  mapfile -t CMD_ARGS < <(plugin_read_list "BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND")
+else
+  read -r -a CMD_ARGS <<< "${BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND:-}"
+fi
 
 docker create \
   --name "$CONTAINER_NAME" \
   "${CREATE_ARGS[@]}" \
   "$IMAGE" \
-  ${CMD_ARGS[@]}
+  "${CMD_ARGS[@]}"
 
 echo "+++ :docker: Running"
 docker start --attach "$CONTAINER_NAME"
