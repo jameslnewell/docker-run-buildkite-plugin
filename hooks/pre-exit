@@ -3,5 +3,14 @@ set -euo pipefail
 
 CONTAINER_NAME="docker-run-buildkite-plugin-${BUILDKITE_JOB_ID}"
 
-echo "--- :docker: Cleaning up"
+echo "--- :docker: removing"
+set -x
 docker rm -f "$CONTAINER_NAME" 2>/dev/null || true
+{ set +x; } 2>/dev/null
+
+TMPDIR_FILE="/tmp/docker-run-buildkite-plugin-${BUILDKITE_JOB_ID}.tmpdir"
+if [[ -f "$TMPDIR_FILE" ]]; then
+  DOCKER_RUN_TMPDIR="$(cat "$TMPDIR_FILE")"
+  rm -rf "$DOCKER_RUN_TMPDIR"
+  rm -f "$TMPDIR_FILE"
+fi
