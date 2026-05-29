@@ -11,7 +11,7 @@ Run a command in a Docker image with phase-level timing and automatic cleanup. E
 | Option | Type | Required | Description |
 |--------|------|----------|-------------|
 | `image` | string | ✓ | Docker image to run |
-| `command` | string or array | — | Command and args to run in the container |
+| `command` | string or array | — | Command to run in the container. A warning is emitted if not set while the step has a `command`. |
 | `workdir` | string | — | Override working directory in the container |
 | `entrypoint` | string | — | Override container entrypoint |
 | `env` | array | — | Environment variables as `KEY=VALUE` |
@@ -83,7 +83,7 @@ The plugin:
 
 1. **Pull**: Downloads the Docker image (`docker pull`)
 2. **Create**: Creates a container with your configuration (`docker create`)
-3. **Run**: Starts and attaches to the container (`docker start --attach`)
+3. **Run**: Starts the container and streams logs (`docker start` + `docker logs --follow`)
 4. **Cleanup**: Always removes the container on exit (`docker rm -f`)
 
 Each phase is a separate log group in Buildkite, so you can see exactly where time is spent and fold/expand them independently.
