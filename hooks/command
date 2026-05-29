@@ -36,11 +36,13 @@ else
   read -r -a CMD_ARGS <<< "${BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND:-}"
 fi
 
+set -x
 docker create \
   --name "$CONTAINER_NAME" \
   "${CREATE_ARGS[@]}" \
   "$IMAGE" \
   "${CMD_ARGS[@]}"
+set +x
 
 echo "+++ :docker: Running"
 docker start --attach "$CONTAINER_NAME"
