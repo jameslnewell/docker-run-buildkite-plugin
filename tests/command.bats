@@ -3,6 +3,7 @@
 setup() {
   load "${BATS_LIB_PATH}/bats-support/load.bash"
   load "${BATS_LIB_PATH}/bats-assert/load.bash"
+  load "${BATS_LIB_PATH}/bats-mock/stub.bash"
 
   export PLUGIN_DIR="${PLUGIN_DIR:-.}"
   export BUILDKITE_JOB_ID="test-job-id"
