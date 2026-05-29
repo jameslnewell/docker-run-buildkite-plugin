@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+CONTAINER_NAME="docker-run-buildkite-plugin-${BUILDKITE_JOB_ID}"
+
+echo "--- :docker: Cleaning up"
+docker rm -f "$CONTAINER_NAME" 2>/dev/null || true

@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${DIR}/../lib/shared.bash"
+
+IMAGE="${BUILDKITE_PLUGIN_DOCKER_RUN_IMAGE}"
+CONTAINER_NAME="docker-run-buildkite-plugin-${BUILDKITE_JOB_ID}"
+
+echo "--- :docker: Pulling ${IMAGE}"
+docker pull "$IMAGE"
+
+echo "--- :docker: Creating container"
+
+CREATE_ARGS=()
+
+workdir="${BUILDKITE_PLUGIN_DOCKER_RUN_WORKDIR:-}"
+[[ -n "$workdir" ]] && CREATE_ARGS+=(--workdir "$workdir")
+
+entrypoint="${BUILDKITE_PLUGIN_DOCKER_RUN_ENTRYPOINT:-}"
+[[ -n "$entrypoint" ]] && CREATE_ARGS+=(--entrypoint "$entrypoint")
+
+mapfile -t ENVS < <(plugin_read_list "BUILDKITE_PLUGIN_DOCKER_RUN_ENV")
+for e in "${ENVS[@]}"; do
+  CREATE_ARGS+=(-e "$e")
+done
+
+mapfile -t VOLUMES < <(plugin_read_list "BUILDKITE_PLUGIN_DOCKER_RUN_VOLUME")
+for v in "${VOLUMES[@]}"; do
+  CREATE_ARGS+=(-v "$v")
+done
+
+mapfile -t CMD_ARGS < <(plugin_read_list "BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND")
+
+docker create \
+  --name "$CONTAINER_NAME" \
+  "${CREATE_ARGS[@]}" \
+  "$IMAGE" \
+  "${CMD_ARGS[@]}"
+
+echo "+++ :docker: Running"
+docker start --attach "$CONTAINER_NAME"

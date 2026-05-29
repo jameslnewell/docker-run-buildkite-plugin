@@ -1,0 +1,30 @@
+name: Docker Run
+description: Run a command in a Docker image with phase-level timing and automatic cleanup
+author: https://github.com/jameslnewell
+requirements:
+  - docker
+configuration:
+  properties:
+    image:
+      type: string
+      description: "Docker image to run (required)"
+    command:
+      type:
+        - string
+        - array
+      description: "Command and args to run in the container"
+    workdir:
+      type: string
+      description: "Override working directory in the container"
+    entrypoint:
+      type: string
+      description: "Override container entrypoint"
+    env:
+      type: array
+      description: "Environment variables as KEY=VALUE"
+    volume:
+      type: array
+      description: "Volume mounts as host:container"
+  required:
+    - image
+  additionalProperties: false
