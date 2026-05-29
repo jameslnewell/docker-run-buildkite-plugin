@@ -12,7 +12,7 @@ configuration:
       type:
         - string
         - array
-      description: "Command and args to run in the container"
+      description: "Command to run in the container. A warning is emitted if not set and the step has a command."
     workdir:
       type: string
       description: "Override working directory in the container"
