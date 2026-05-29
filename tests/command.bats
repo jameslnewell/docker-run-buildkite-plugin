@@ -48,7 +48,7 @@ teardown() {
 
   stub docker \
     "pull * : true" \
-    "create * ubuntu:24.04 * : true" \
+    "create --name * * bash -c * : true" \
     "start * : true"
 
   run "$PLUGIN_DIR/hooks/command"
@@ -66,7 +66,7 @@ teardown() {
 
   stub docker \
     "pull * : true" \
-    "create * -e * -e * * : true" \
+    "create --name * -e * -e * * : true" \
     "start * : true"
 
   run "$PLUGIN_DIR/hooks/command"
@@ -84,7 +84,7 @@ teardown() {
 
   stub docker \
     "pull * : true" \
-    "create * -v * -v * * : true" \
+    "create --name * -v * -v * * : true" \
     "start * : true"
 
   run "$PLUGIN_DIR/hooks/command"
@@ -133,9 +133,7 @@ teardown() {
   unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_2
   export BUILDKITE_PLUGIN_DOCKER_RUN_IMAGE="invalid/image:nonexistent"
 
-  stub docker \
-    "pull * : exit 1" \
-    "rm -f * : true"
+  stub docker "pull * : exit 1"
 
   run "$PLUGIN_DIR/hooks/command"
 
