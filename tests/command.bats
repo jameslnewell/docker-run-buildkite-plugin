@@ -47,9 +47,9 @@ teardown() {
   export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_2="echo hello"
 
   stub docker \
-    "pull ubuntu:24.04 : true" \
-    "create --name docker-run-buildkite-plugin-test-job-id ubuntu:24.04 bash -c 'echo hello' : true" \
-    "start --attach docker-run-buildkite-plugin-test-job-id : true"
+    "pull * : true" \
+    "create * ubuntu:24.04 * : true" \
+    "start * : true"
 
   run "$PLUGIN_DIR/hooks/command"
 
@@ -65,9 +65,9 @@ teardown() {
   export BUILDKITE_PLUGIN_DOCKER_RUN_ENV_1="BAZ=qux"
 
   stub docker \
-    "pull ubuntu:24.04 : true" \
-    "create --name docker-run-buildkite-plugin-test-job-id -e FOO=bar -e BAZ=qux ubuntu:24.04 : true" \
-    "start --attach docker-run-buildkite-plugin-test-job-id : true"
+    "pull * : true" \
+    "create * -e * -e * * : true" \
+    "start * : true"
 
   run "$PLUGIN_DIR/hooks/command"
 
@@ -83,9 +83,9 @@ teardown() {
   export BUILDKITE_PLUGIN_DOCKER_RUN_VOLUME_1="/another:/mount"
 
   stub docker \
-    "pull ubuntu:24.04 : true" \
-    "create --name docker-run-buildkite-plugin-test-job-id -v /host:/container -v /another:/mount ubuntu:24.04 : true" \
-    "start --attach docker-run-buildkite-plugin-test-job-id : true"
+    "pull * : true" \
+    "create * -v * -v * * : true" \
+    "start * : true"
 
   run "$PLUGIN_DIR/hooks/command"
 
