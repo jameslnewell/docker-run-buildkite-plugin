@@ -113,9 +113,11 @@ teardown() {
   assert_success
 }
 
-@test "Fails when image is missing" {
-  unset BUILDKITE_PLUGIN_DOCKER_RUN_IMAGE
-  stub docker "pull : exit 1"
+@test "Fails when docker pull fails" {
+  export BUILDKITE_PLUGIN_DOCKER_RUN_IMAGE="invalid/image:nonexistent"
+  stub docker \
+    "pull invalid/image:nonexistent : exit 1" \
+    "rm -f docker-run-buildkite-plugin-test-job-id : true"
 
   run "$PLUGIN_DIR/hooks/command"
 
