@@ -41,6 +41,7 @@ teardown() {
 }
 
 @test "Passes command as array" {
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND
   export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_0="bash"
   export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_1="-c"
   export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_2="echo hello"
@@ -56,6 +57,10 @@ teardown() {
 }
 
 @test "Passes environment variables" {
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_0
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_1
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_2
   export BUILDKITE_PLUGIN_DOCKER_RUN_ENV_0="FOO=bar"
   export BUILDKITE_PLUGIN_DOCKER_RUN_ENV_1="BAZ=qux"
 
@@ -70,6 +75,10 @@ teardown() {
 }
 
 @test "Passes volume mounts" {
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_0
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_1
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_2
   export BUILDKITE_PLUGIN_DOCKER_RUN_VOLUME_0="/host:/container"
   export BUILDKITE_PLUGIN_DOCKER_RUN_VOLUME_1="/another:/mount"
 
@@ -84,6 +93,10 @@ teardown() {
 }
 
 @test "Passes workdir option" {
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_0
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_1
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_2
   export BUILDKITE_PLUGIN_DOCKER_RUN_WORKDIR="/app"
 
   stub docker \
@@ -97,6 +110,10 @@ teardown() {
 }
 
 @test "Passes entrypoint option" {
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_0
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_1
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_2
   export BUILDKITE_PLUGIN_DOCKER_RUN_ENTRYPOINT="/bin/bash"
 
   stub docker \
@@ -110,6 +127,10 @@ teardown() {
 }
 
 @test "Fails when docker pull fails" {
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_0
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_1
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_2
   export BUILDKITE_PLUGIN_DOCKER_RUN_IMAGE="invalid/image:nonexistent"
 
   stub docker \
