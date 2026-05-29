@@ -26,21 +26,10 @@ jobs:
             exit 1
           fi
 
-      - name: Create or verify git tag
+      - name: Create and push git tag
         run: |
-          VERSION="${{ inputs.version }}"
-          if git rev-parse "$VERSION" >/dev/null 2>&1; then
-            TAGGED_COMMIT=$(git rev-parse "$VERSION")
-            HEAD_COMMIT=$(git rev-parse HEAD)
-            if [ "$TAGGED_COMMIT" != "$HEAD_COMMIT" ]; then
-              echo "Tag $VERSION already exists and points to $TAGGED_COMMIT, not HEAD ($HEAD_COMMIT)"
-              exit 1
-            fi
-            echo "Tag $VERSION already points to HEAD — skipping tag creation"
-          else
-            git tag "$VERSION"
-            git push origin "$VERSION"
-          fi
+          git tag "${{ inputs.version }}"
+          git push origin "${{ inputs.version }}"
 
       - name: Generate changelog
         id: changelog
