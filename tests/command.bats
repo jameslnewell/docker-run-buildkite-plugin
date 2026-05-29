@@ -94,7 +94,7 @@ teardown() {
 
   stub docker \
     "pull ubuntu:24.04 : true" \
-    "create --name docker-run-buildkite-plugin-test-job-id ubuntu:24.04 echo plugin : true" \
+    "create --name docker-run-buildkite-plugin-test-job-id ubuntu:24.04 /bin/sh -e -c \"echo plugin\" : true" \
     "start docker-run-buildkite-plugin-test-job-id : true" \
     "logs --follow docker-run-buildkite-plugin-test-job-id : true" \
     "wait docker-run-buildkite-plugin-test-job-id : echo 0"
@@ -105,12 +105,12 @@ teardown() {
   refute_output --partial "Warning:"
 }
 
-@test "Passes command as string" {
+@test "Passes command as string wrapped in default shell" {
   export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND="echo hello"
 
   stub docker \
     "pull ubuntu:24.04 : true" \
-    "create --name docker-run-buildkite-plugin-test-job-id ubuntu:24.04 echo hello : true" \
+    "create --name docker-run-buildkite-plugin-test-job-id ubuntu:24.04 /bin/sh -e -c \"echo hello\" : true" \
     "start docker-run-buildkite-plugin-test-job-id : true" \
     "logs --follow docker-run-buildkite-plugin-test-job-id : true" \
     "wait docker-run-buildkite-plugin-test-job-id : echo 0"
@@ -120,17 +120,72 @@ teardown() {
   assert_success
 }
 
-@test "Passes command as array" {
-  export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_0="sh"
-  export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_1="-c"
-  export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_2="echo success"
+@test "Joins command array items with newlines and wraps in default shell" {
+  export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_0="export FOO=bar"
+  export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_1="echo hello"
 
-  run bash -c "source $PLUGIN_DIR/lib/shared.bash; plugin_read_list 'BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND'"
+  # The joined script contains a newline so cannot be matched literally in the plan file;
+  # use :: to accept the create call unconditionally and verify via xtrace in captured output.
+  stub docker \
+    "pull ubuntu:24.04 : true" \
+    ":: true" \
+    "start docker-run-buildkite-plugin-test-job-id : true" \
+    "logs --follow docker-run-buildkite-plugin-test-job-id : true" \
+    "wait docker-run-buildkite-plugin-test-job-id : echo 0"
 
-  [[ $status -eq 0 ]]
-  [[ "$output" == *"sh"* ]]
-  [[ "$output" == *"-c"* ]]
-  [[ "$output" == *"echo success"* ]]
+  run bash -c "${PLUGIN_DIR}/hooks/command 2>&1"
+
+  assert_success
+  assert_output --partial "/bin/sh -e -c"
+  assert_output --partial "export FOO=bar"
+}
+
+@test "Shell false passes command items as direct docker args" {
+  export BUILDKITE_PLUGIN_DOCKER_RUN_SHELL="false"
+  export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_0="node"
+  export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_1="server.js"
+
+  stub docker \
+    "pull ubuntu:24.04 : true" \
+    "create --name docker-run-buildkite-plugin-test-job-id ubuntu:24.04 node server.js : true" \
+    "start docker-run-buildkite-plugin-test-job-id : true" \
+    "logs --follow docker-run-buildkite-plugin-test-job-id : true" \
+    "wait docker-run-buildkite-plugin-test-job-id : echo 0"
+
+  run "$PLUGIN_DIR/hooks/command"
+
+  assert_success
+}
+
+@test "Custom shell array wraps command" {
+  export BUILDKITE_PLUGIN_DOCKER_RUN_SHELL_0="/bin/bash"
+  export BUILDKITE_PLUGIN_DOCKER_RUN_SHELL_1="-e"
+  export BUILDKITE_PLUGIN_DOCKER_RUN_SHELL_2="-c"
+  export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND="echo hello"
+
+  stub docker \
+    "pull ubuntu:24.04 : true" \
+    "create --name docker-run-buildkite-plugin-test-job-id ubuntu:24.04 /bin/bash -e -c \"echo hello\" : true" \
+    "start docker-run-buildkite-plugin-test-job-id : true" \
+    "logs --follow docker-run-buildkite-plugin-test-job-id : true" \
+    "wait docker-run-buildkite-plugin-test-job-id : echo 0"
+
+  run "$PLUGIN_DIR/hooks/command"
+
+  assert_success
+}
+
+@test "Shell as string errors" {
+  export BUILDKITE_PLUGIN_DOCKER_RUN_SHELL="/bin/bash -e -c"
+  export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND="echo hello"
+
+  stub docker \
+    "pull ubuntu:24.04 : true"
+
+  run "$PLUGIN_DIR/hooks/command"
+
+  assert_failure
+  assert_output --partial "Error:"
 }
 
 @test "Passes environment variables" {
@@ -222,7 +277,7 @@ teardown() {
 
   stub docker \
     "pull ubuntu:24.04 : true" \
-    "create --name docker-run-buildkite-plugin-test-job-id --workdir /workspace --entrypoint /bin/sh ubuntu:24.04 build script : true" \
+    "create --name docker-run-buildkite-plugin-test-job-id --workdir /workspace --entrypoint /bin/sh ubuntu:24.04 /bin/sh -e -c \"build script\" : true" \
     "start docker-run-buildkite-plugin-test-job-id : true" \
     "logs --follow docker-run-buildkite-plugin-test-job-id : true" \
     "wait docker-run-buildkite-plugin-test-job-id : echo 0"
