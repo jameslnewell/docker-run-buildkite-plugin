@@ -33,6 +33,20 @@ teardown() {
   [[ "$result" == $'first\nsecond\nthird' ]]
 }
 
+@test "plugin_read_list with indexed array reads all items under set -e" {
+  # Regression: (( i++ )) returns exit code 1 when i=0, which set -e in a
+  # process substitution subshell would turn into an early exit, silently
+  # dropping all items after index 0.
+  export MY_VAR_0="first"
+  export MY_VAR_1="second"
+  export MY_VAR_2="third"
+  mapfile -t result < <(set -e; plugin_read_list "MY_VAR")
+  [[ "${#result[@]}" -eq 3 ]]
+  [[ "${result[0]}" == "first" ]]
+  [[ "${result[1]}" == "second" ]]
+  [[ "${result[2]}" == "third" ]]
+}
+
 @test "plugin_read_list with empty result" {
   unset MY_VAR
   unset MY_VAR_0
