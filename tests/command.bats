@@ -11,7 +11,7 @@ setup() {
 }
 
 teardown() {
-  unstub docker
+  unstub docker 2>/dev/null || true
 }
 
 @test "Runs with image only" {
