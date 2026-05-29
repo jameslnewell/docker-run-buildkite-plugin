@@ -133,7 +133,7 @@ teardown() {
   unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_2
   export BUILDKITE_PLUGIN_DOCKER_RUN_IMAGE="invalid/image:nonexistent"
 
-  stub docker "pull * : exit 1"
+  stub docker "pull invalid/image:nonexistent : exit 1"
 
   run "$PLUGIN_DIR/hooks/command"
 
