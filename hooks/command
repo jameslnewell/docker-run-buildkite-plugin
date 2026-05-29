@@ -7,10 +7,12 @@ source "${DIR}/../lib/shared.bash"
 IMAGE="${BUILDKITE_PLUGIN_DOCKER_RUN_IMAGE}"
 CONTAINER_NAME="docker-run-buildkite-plugin-${BUILDKITE_JOB_ID}"
 
-echo "--- :docker: Pulling ${IMAGE}"
+echo "--- :docker: pulling"
+set -x
 docker pull "$IMAGE"
+{ set +x; } 2>/dev/null
 
-echo "--- :docker: Creating container"
+echo "--- :docker: creating"
 
 CREATE_ARGS=()
 
@@ -27,8 +29,32 @@ done
 
 mapfile -t VOLUMES < <(plugin_read_list "BUILDKITE_PLUGIN_DOCKER_RUN_VOLUME")
 for v in "${VOLUMES[@]}"; do
+  if [[ "$v" == *:* ]]; then
+    host="${v%%:*}"
+    rest="${v#*:}"
+    if [[ "$host" == .* ]]; then
+      host="$(pwd)${host#.}"
+    fi
+    v="${host}:${rest}"
+  fi
   CREATE_ARGS+=(-v "$v")
 done
+
+if [[ "${BUILDKITE_PLUGIN_DOCKER_RUN_DOCKER_FROM_DOCKER:-false}" == "true" ]]; then
+  DOCKER_RUN_TMPDIR="$(mktemp -d)"
+  cp "${DOCKER_CONFIG}/config.json" "${DOCKER_RUN_TMPDIR}/config.json"
+  chmod 0644 "${DOCKER_RUN_TMPDIR}/config.json"
+  DOCKER_HOST_VALUE="${DOCKER_HOST:-unix:///var/run/docker.sock}"
+  if [[ "$DOCKER_HOST_VALUE" == unix://* ]]; then
+    DOCKER_SOCKET="${DOCKER_HOST_VALUE#unix://}"
+    CREATE_ARGS+=(-v "${DOCKER_SOCKET}:/var/run/docker.sock")
+  else
+    # TCP daemon — no socket to mount; pass DOCKER_HOST so the container's docker client connects directly
+    CREATE_ARGS+=(-e "DOCKER_HOST=${DOCKER_HOST_VALUE}")
+  fi
+  CREATE_ARGS+=(-v "${DOCKER_RUN_TMPDIR}/config.json:/root/.docker/config.json")
+  echo "$DOCKER_RUN_TMPDIR" > "/tmp/docker-run-buildkite-plugin-${BUILDKITE_JOB_ID}.tmpdir"
+fi
 
 if [[ -n "${BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_0:-}" ]]; then
   mapfile -t CMD_ARGS < <(plugin_read_list "BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND")
@@ -46,7 +72,11 @@ DOCKER_ARGS+=("${CREATE_ARGS[@]}")
 DOCKER_ARGS+=("$IMAGE")
 DOCKER_ARGS+=("${CMD_ARGS[@]}")
 
+set -x
 docker "${DOCKER_ARGS[@]}"
+{ set +x; } 2>/dev/null
 
-echo "+++ :docker: Running"
+echo "+++ :docker: running"
+set -x
 docker start --attach "$CONTAINER_NAME"
+{ set +x; } 2>/dev/null
