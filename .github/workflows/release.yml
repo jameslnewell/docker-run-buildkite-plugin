@@ -26,11 +26,20 @@ jobs:
             exit 1
           fi
 
-      - name: Check tag doesn't already exist
+      - name: Create or verify git tag
         run: |
-          if git rev-parse "${{ inputs.version }}" >/dev/null 2>&1; then
-            echo "Tag ${{ inputs.version }} already exists"
-            exit 1
+          VERSION="${{ inputs.version }}"
+          if git rev-parse "$VERSION" >/dev/null 2>&1; then
+            TAGGED_COMMIT=$(git rev-parse "$VERSION")
+            HEAD_COMMIT=$(git rev-parse HEAD)
+            if [ "$TAGGED_COMMIT" != "$HEAD_COMMIT" ]; then
+              echo "Tag $VERSION already exists and points to $TAGGED_COMMIT, not HEAD ($HEAD_COMMIT)"
+              exit 1
+            fi
+            echo "Tag $VERSION already points to HEAD — skipping tag creation"
+          else
+            git tag "$VERSION"
+            git push origin "$VERSION"
           fi
 
       - name: Generate changelog
@@ -38,21 +47,15 @@ jobs:
         run: |
           {
             echo "CHANGELOG<<EOF"
-            PREV_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+            PREV_TAG=$(git tag --sort=-version:refname | grep -v "^${{ inputs.version }}$" | head -1 || echo "")
             if [ -z "$PREV_TAG" ]; then
               echo "Initial release"
-              git log --oneline --pretty=format:"- %s (%h)"
+              git log --pretty=format:"- %s (%h)"
             else
-              git log --oneline --pretty=format:"- %s (%h)" "$PREV_TAG"..HEAD
+              git log --pretty=format:"- %s (%h)" "$PREV_TAG".."${{ inputs.version }}"
             fi
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
-
-      - name: Create git tag
-        run: git tag "${{ inputs.version }}"
-
-      - name: Push tag
-        run: git push origin "${{ inputs.version }}"
 
       - name: Create GitHub release
         run: |
