@@ -83,5 +83,8 @@ docker "${DOCKER_ARGS[@]}"
 
 echo "+++ :docker: running"
 set -x
-docker start --attach "$CONTAINER_NAME"
+docker start "$CONTAINER_NAME"
+docker logs --follow "$CONTAINER_NAME"
+EXIT_CODE=$(docker wait "$CONTAINER_NAME")
 { set +x; } 2>/dev/null
+exit "$EXIT_CODE"
