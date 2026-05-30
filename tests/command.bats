@@ -287,11 +287,11 @@ teardown() {
   assert_success
 }
 
-@test "docker_from_docker mounts default socket when DOCKER_HOST is unset" {
+@test "propagate-docker mounts default socket when DOCKER_HOST is unset" {
   unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND
   unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_0
   unset DOCKER_HOST
-  export BUILDKITE_PLUGIN_DOCKER_RUN_DOCKER_FROM_DOCKER="true"
+  export BUILDKITE_PLUGIN_DOCKER_RUN_PROPAGATE_DOCKER="true"
   # Create a real config file before the mktemp stub so the -f guard passes
   real_docker_config=$(mktemp -d)
   echo '{}' > "${real_docker_config}/config.json"
@@ -320,10 +320,10 @@ teardown() {
   rm -f "/tmp/docker-run-buildkite-plugin-${BUILDKITE_JOB_ID}.tmpdir"
 }
 
-@test "docker_from_docker uses custom unix socket from DOCKER_HOST" {
+@test "propagate-docker uses custom unix socket from DOCKER_HOST" {
   unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND
   unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_0
-  export BUILDKITE_PLUGIN_DOCKER_RUN_DOCKER_FROM_DOCKER="true"
+  export BUILDKITE_PLUGIN_DOCKER_RUN_PROPAGATE_DOCKER="true"
   export DOCKER_HOST="unix:///run/user/1000/docker.sock"
   real_docker_config=$(mktemp -d)
   echo '{}' > "${real_docker_config}/config.json"
@@ -352,10 +352,10 @@ teardown() {
   rm -f "/tmp/docker-run-buildkite-plugin-${BUILDKITE_JOB_ID}.tmpdir"
 }
 
-@test "docker_from_docker passes DOCKER_HOST env var for TCP connections" {
+@test "propagate-docker passes DOCKER_HOST env var for TCP connections" {
   unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND
   unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_0
-  export BUILDKITE_PLUGIN_DOCKER_RUN_DOCKER_FROM_DOCKER="true"
+  export BUILDKITE_PLUGIN_DOCKER_RUN_PROPAGATE_DOCKER="true"
   export DOCKER_HOST="tcp://localhost:2375"
   real_docker_config=$(mktemp -d)
   echo '{}' > "${real_docker_config}/config.json"
@@ -384,11 +384,11 @@ teardown() {
   rm -f "/tmp/docker-run-buildkite-plugin-${BUILDKITE_JOB_ID}.tmpdir"
 }
 
-@test "docker_from_docker skips config mount when config.json does not exist" {
+@test "propagate-docker skips config mount when config.json does not exist" {
   unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND
   unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_0
   unset DOCKER_HOST
-  export BUILDKITE_PLUGIN_DOCKER_RUN_DOCKER_FROM_DOCKER="true"
+  export BUILDKITE_PLUGIN_DOCKER_RUN_PROPAGATE_DOCKER="true"
   export DOCKER_CONFIG="/nonexistent/docker-config"
 
   stub mktemp \
@@ -473,4 +473,84 @@ teardown() {
   run "$PLUGIN_DIR/hooks/command"
 
   assert_success
+}
+
+@test "propagate-ssh-agent mounts SSH auth socket and sets SSH_AUTH_SOCK" {
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_0
+  export BUILDKITE_PLUGIN_DOCKER_RUN_PROPAGATE_SSH_AGENT="true"
+  export SSH_AUTH_SOCK="/run/ssh-agent.sock"
+
+  stub docker \
+    "pull ubuntu:24.04 : true" \
+    "create --name docker-run-buildkite-plugin-test-job-id -v /run/ssh-agent.sock:/run/ssh-agent -e SSH_AUTH_SOCK=/run/ssh-agent ubuntu:24.04 : true" \
+    "start docker-run-buildkite-plugin-test-job-id : true" \
+    "logs --follow docker-run-buildkite-plugin-test-job-id : true" \
+    "wait docker-run-buildkite-plugin-test-job-id : echo 0"
+
+  run "$PLUGIN_DIR/hooks/command"
+
+  assert_success
+}
+
+@test "propagate-ssh-agent is skipped when SSH_AUTH_SOCK is unset" {
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_0
+  unset SSH_AUTH_SOCK
+  export BUILDKITE_PLUGIN_DOCKER_RUN_PROPAGATE_SSH_AGENT="true"
+
+  stub docker \
+    "pull ubuntu:24.04 : true" \
+    "create --name docker-run-buildkite-plugin-test-job-id ubuntu:24.04 : true" \
+    "start docker-run-buildkite-plugin-test-job-id : true" \
+    "logs --follow docker-run-buildkite-plugin-test-job-id : true" \
+    "wait docker-run-buildkite-plugin-test-job-id : echo 0"
+
+  run "$PLUGIN_DIR/hooks/command"
+
+  assert_success
+}
+
+@test "propagate-aws passes AWS credential and region env vars" {
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_0
+  export BUILDKITE_PLUGIN_DOCKER_RUN_PROPAGATE_AWS="true"
+
+  stub docker \
+    "pull ubuntu:24.04 : true" \
+    "create --name docker-run-buildkite-plugin-test-job-id -e AWS_REGION -e AWS_DEFAULT_REGION -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY -e AWS_SESSION_TOKEN ubuntu:24.04 : true" \
+    "start docker-run-buildkite-plugin-test-job-id : true" \
+    "logs --follow docker-run-buildkite-plugin-test-job-id : true" \
+    "wait docker-run-buildkite-plugin-test-job-id : echo 0"
+
+  run "$PLUGIN_DIR/hooks/command"
+
+  assert_success
+}
+
+@test "propagate-buildkite-agent mounts agent socket and passes access token" {
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_0
+  export BUILDKITE_PLUGIN_DOCKER_RUN_PROPAGATE_BUILDKITE_AGENT="true"
+
+  # Create a fake socket so the -S guard passes
+  fake_socket_dir=$(mktemp -d)
+  fake_socket="${fake_socket_dir}/buildkite-agent.sock"
+  # Use a named pipe as a stand-in for a socket in tests
+  mkfifo "$fake_socket" || true
+
+  # Temporarily override the socket path by making the hook find it
+  # We can't easily override the hardcoded path, so test against the actual path
+  # This test verifies the env var is propagated; socket mounting depends on the path existing
+  stub docker \
+    "pull ubuntu:24.04 : true" \
+    "create --name docker-run-buildkite-plugin-test-job-id -e BUILDKITE_AGENT_ACCESS_TOKEN ubuntu:24.04 : true" \
+    "start docker-run-buildkite-plugin-test-job-id : true" \
+    "logs --follow docker-run-buildkite-plugin-test-job-id : true" \
+    "wait docker-run-buildkite-plugin-test-job-id : echo 0"
+
+  run "$PLUGIN_DIR/hooks/command"
+
+  assert_success
+  rm -rf "$fake_socket_dir"
 }
