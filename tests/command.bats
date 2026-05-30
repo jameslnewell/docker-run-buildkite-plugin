@@ -216,6 +216,22 @@ teardown() {
   unset BUILDKITE_COMMAND
 }
 
+@test "Shell array with entrypoint errors" {
+  export BUILDKITE_PLUGIN_DOCKER_RUN_ENTRYPOINT="/bin/sh"
+  export BUILDKITE_PLUGIN_DOCKER_RUN_SHELL_0="/bin/bash"
+  export BUILDKITE_PLUGIN_DOCKER_RUN_SHELL_1="-e"
+  export BUILDKITE_PLUGIN_DOCKER_RUN_SHELL_2="-c"
+  export BUILDKITE_COMMAND="make test"
+
+  stub docker \
+    "pull ubuntu:24.04 : true"
+
+  run "$PLUGIN_DIR/hooks/command"
+
+  assert_failure
+  assert_output --partial "Error:"
+}
+
 @test "Shell as string errors" {
   export BUILDKITE_PLUGIN_DOCKER_RUN_SHELL="/bin/bash -e -c"
   export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND="echo hello"
