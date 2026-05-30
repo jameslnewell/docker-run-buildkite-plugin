@@ -40,6 +40,13 @@ for v in "${VOLUMES[@]}"; do
   CREATE_ARGS+=(-v "$v")
 done
 
+if [[ "${BUILDKITE_PLUGIN_DOCKER_RUN_SSH_AGENT:-false}" == "true" ]]; then
+  if [[ -n "${SSH_AUTH_SOCK:-}" ]]; then
+    CREATE_ARGS+=(-v "${SSH_AUTH_SOCK}:/run/ssh-agent")
+    CREATE_ARGS+=(-e "SSH_AUTH_SOCK=/run/ssh-agent")
+  fi
+fi
+
 if [[ "${BUILDKITE_PLUGIN_DOCKER_RUN_DOCKER_FROM_DOCKER:-false}" == "true" ]]; then
   DOCKER_RUN_TMPDIR="$(mktemp -d)"
   DOCKER_HOST_VALUE="${DOCKER_HOST:-unix:///var/run/docker.sock}"

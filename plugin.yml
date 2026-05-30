@@ -33,6 +33,9 @@ configuration:
     docker_from_docker:
       type: boolean
       description: "Mount the host Docker socket and a readable copy of the Docker config into the container, enabling Docker-from-Docker"
+    ssh_agent:
+      type: boolean
+      description: "Mount the host SSH agent socket into the container at /run/ssh-agent and set SSH_AUTH_SOCK accordingly, enabling SSH key forwarding"
   required:
     - image
   additionalProperties: false
