@@ -10,6 +10,9 @@ setup() {
   export PLUGIN_DIR="${PLUGIN_DIR:-.}"
   export BUILDKITE_JOB_ID="test-job-id"
   export BUILDKITE_PLUGIN_DOCKER_RUN_IMAGE="ubuntu:24.04"
+  # Disable mount-checkout by default so tests that don't cover that feature
+  # can use simple exact-match stubs without the --workdir/-v args.
+  export BUILDKITE_PLUGIN_DOCKER_RUN_MOUNT_CHECKOUT="false"
 }
 
 teardown() {
@@ -69,14 +72,14 @@ teardown() {
   assert_success
 }
 
-@test "Warns when step has a command" {
+@test "Runs step command in shell" {
   unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND
   unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_0
   export BUILDKITE_COMMAND="make test"
 
   stub docker \
     "pull ubuntu:24.04 : true" \
-    "create --name docker-run-buildkite-plugin-test-job-id ubuntu:24.04 : true" \
+    "create --name docker-run-buildkite-plugin-test-job-id ubuntu:24.04 /bin/sh -e -c \"make test\" : true" \
     "start docker-run-buildkite-plugin-test-job-id : true" \
     "logs --follow docker-run-buildkite-plugin-test-job-id : true" \
     "wait docker-run-buildkite-plugin-test-job-id : echo 0"
@@ -84,33 +87,30 @@ teardown() {
   run "$PLUGIN_DIR/hooks/command"
 
   assert_success
-  assert_output --partial "Warning:"
   unset BUILDKITE_COMMAND
 }
 
-@test "No warning when step has no command" {
+@test "Errors when both step and plugin commands are specified" {
+  export BUILDKITE_COMMAND="make test"
   export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND="echo plugin"
+
+  stub docker \
+    "pull ubuntu:24.04 : true"
+
+  run "$PLUGIN_DIR/hooks/command"
+
+  assert_failure
+  assert_output --partial "Error:"
   unset BUILDKITE_COMMAND
-
-  stub docker \
-    "pull ubuntu:24.04 : true" \
-    "create --name docker-run-buildkite-plugin-test-job-id ubuntu:24.04 /bin/sh -e -c \"echo plugin\" : true" \
-    "start docker-run-buildkite-plugin-test-job-id : true" \
-    "logs --follow docker-run-buildkite-plugin-test-job-id : true" \
-    "wait docker-run-buildkite-plugin-test-job-id : echo 0"
-
-  run "$PLUGIN_DIR/hooks/command"
-
-  assert_success
-  refute_output --partial "Warning:"
 }
 
-@test "Passes command as string wrapped in default shell" {
-  export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND="echo hello"
+@test "Plugin command string passed as direct docker arg" {
+  unset BUILDKITE_COMMAND
+  export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND="node"
 
   stub docker \
     "pull ubuntu:24.04 : true" \
-    "create --name docker-run-buildkite-plugin-test-job-id ubuntu:24.04 /bin/sh -e -c \"echo hello\" : true" \
+    "create --name docker-run-buildkite-plugin-test-job-id ubuntu:24.04 node : true" \
     "start docker-run-buildkite-plugin-test-job-id : true" \
     "logs --follow docker-run-buildkite-plugin-test-job-id : true" \
     "wait docker-run-buildkite-plugin-test-job-id : echo 0"
@@ -120,28 +120,8 @@ teardown() {
   assert_success
 }
 
-@test "Joins command array items with newlines and wraps in default shell" {
-  export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_0="export FOO=bar"
-  export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_1="echo hello"
-
-  # The joined script contains a newline so cannot be matched literally in the plan file;
-  # use :: to accept the create call unconditionally and verify via xtrace in captured output.
-  stub docker \
-    "pull ubuntu:24.04 : true" \
-    ":: true" \
-    "start docker-run-buildkite-plugin-test-job-id : true" \
-    "logs --follow docker-run-buildkite-plugin-test-job-id : true" \
-    "wait docker-run-buildkite-plugin-test-job-id : echo 0"
-
-  run bash -c "${PLUGIN_DIR}/hooks/command 2>&1"
-
-  assert_success
-  assert_output --partial "/bin/sh -e -c"
-  assert_output --partial "export FOO=bar"
-}
-
-@test "Shell false passes command items as direct docker args" {
-  export BUILDKITE_PLUGIN_DOCKER_RUN_SHELL="false"
+@test "Plugin command array items passed as direct docker args" {
+  unset BUILDKITE_COMMAND
   export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_0="node"
   export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_1="server.js"
 
@@ -157,15 +137,15 @@ teardown() {
   assert_success
 }
 
-@test "Custom shell array wraps command" {
-  export BUILDKITE_PLUGIN_DOCKER_RUN_SHELL_0="/bin/bash"
-  export BUILDKITE_PLUGIN_DOCKER_RUN_SHELL_1="-e"
-  export BUILDKITE_PLUGIN_DOCKER_RUN_SHELL_2="-c"
-  export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND="echo hello"
+@test "Step command with shell false passed directly" {
+  export BUILDKITE_PLUGIN_DOCKER_RUN_SHELL="false"
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_0
+  export BUILDKITE_COMMAND="make test"
 
   stub docker \
     "pull ubuntu:24.04 : true" \
-    "create --name docker-run-buildkite-plugin-test-job-id ubuntu:24.04 /bin/bash -e -c \"echo hello\" : true" \
+    "create --name docker-run-buildkite-plugin-test-job-id ubuntu:24.04 \"make test\" : true" \
     "start docker-run-buildkite-plugin-test-job-id : true" \
     "logs --follow docker-run-buildkite-plugin-test-job-id : true" \
     "wait docker-run-buildkite-plugin-test-job-id : echo 0"
@@ -173,6 +153,47 @@ teardown() {
   run "$PLUGIN_DIR/hooks/command"
 
   assert_success
+  unset BUILDKITE_COMMAND
+}
+
+@test "Custom shell array wraps step command" {
+  export BUILDKITE_PLUGIN_DOCKER_RUN_SHELL_0="/bin/bash"
+  export BUILDKITE_PLUGIN_DOCKER_RUN_SHELL_1="-e"
+  export BUILDKITE_PLUGIN_DOCKER_RUN_SHELL_2="-c"
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_0
+  export BUILDKITE_COMMAND="make test"
+
+  stub docker \
+    "pull ubuntu:24.04 : true" \
+    "create --name docker-run-buildkite-plugin-test-job-id ubuntu:24.04 /bin/bash -e -c \"make test\" : true" \
+    "start docker-run-buildkite-plugin-test-job-id : true" \
+    "logs --follow docker-run-buildkite-plugin-test-job-id : true" \
+    "wait docker-run-buildkite-plugin-test-job-id : echo 0"
+
+  run "$PLUGIN_DIR/hooks/command"
+
+  assert_success
+  unset BUILDKITE_COMMAND
+}
+
+@test "Entrypoint suppresses shell for step commands" {
+  export BUILDKITE_PLUGIN_DOCKER_RUN_ENTRYPOINT="/bin/sh"
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_0
+  export BUILDKITE_COMMAND="make test"
+
+  stub docker \
+    "pull ubuntu:24.04 : true" \
+    "create --name docker-run-buildkite-plugin-test-job-id --entrypoint /bin/sh ubuntu:24.04 \"make test\" : true" \
+    "start docker-run-buildkite-plugin-test-job-id : true" \
+    "logs --follow docker-run-buildkite-plugin-test-job-id : true" \
+    "wait docker-run-buildkite-plugin-test-job-id : echo 0"
+
+  run "$PLUGIN_DIR/hooks/command"
+
+  assert_success
+  unset BUILDKITE_COMMAND
 }
 
 @test "Shell as string errors" {
@@ -266,18 +287,16 @@ teardown() {
   assert_failure
 }
 
-@test "Integration: runs with multiple configuration options" {
-  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND
-  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_0
-  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_1
-  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_2
+@test "Integration: plugin command and entrypoint passed directly" {
   export BUILDKITE_PLUGIN_DOCKER_RUN_WORKDIR="/workspace"
   export BUILDKITE_PLUGIN_DOCKER_RUN_ENTRYPOINT="/bin/sh"
-  export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND="build script"
+  export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_0="node"
+  export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_1="server.js"
+  unset BUILDKITE_COMMAND
 
   stub docker \
     "pull ubuntu:24.04 : true" \
-    "create --name docker-run-buildkite-plugin-test-job-id --workdir /workspace --entrypoint /bin/sh ubuntu:24.04 /bin/sh -e -c \"build script\" : true" \
+    "create --name docker-run-buildkite-plugin-test-job-id --workdir /workspace --entrypoint /bin/sh ubuntu:24.04 node server.js : true" \
     "start docker-run-buildkite-plugin-test-job-id : true" \
     "logs --follow docker-run-buildkite-plugin-test-job-id : true" \
     "wait docker-run-buildkite-plugin-test-job-id : echo 0"
@@ -285,6 +304,84 @@ teardown() {
   run "$PLUGIN_DIR/hooks/command"
 
   assert_success
+}
+
+@test "mount-checkout mounts checkout at /workdir by default" {
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_MOUNT_CHECKOUT
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_WORKDIR
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_0
+
+  stub docker \
+    "pull ubuntu:24.04 : true" \
+    "create --name docker-run-buildkite-plugin-test-job-id --workdir /workdir -v $(pwd):/workdir ubuntu:24.04 : true" \
+    "start docker-run-buildkite-plugin-test-job-id : true" \
+    "logs --follow docker-run-buildkite-plugin-test-job-id : true" \
+    "wait docker-run-buildkite-plugin-test-job-id : echo 0"
+
+  run "$PLUGIN_DIR/hooks/command"
+
+  assert_success
+}
+
+@test "mount-checkout false does not mount checkout" {
+  export BUILDKITE_PLUGIN_DOCKER_RUN_MOUNT_CHECKOUT="false"
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_0
+
+  stub docker \
+    "pull ubuntu:24.04 : true" \
+    "create --name docker-run-buildkite-plugin-test-job-id ubuntu:24.04 : true" \
+    "start docker-run-buildkite-plugin-test-job-id : true" \
+    "logs --follow docker-run-buildkite-plugin-test-job-id : true" \
+    "wait docker-run-buildkite-plugin-test-job-id : echo 0"
+
+  run "$PLUGIN_DIR/hooks/command"
+
+  assert_success
+}
+
+@test "mount-checkout uses explicit workdir" {
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_MOUNT_CHECKOUT
+  export BUILDKITE_PLUGIN_DOCKER_RUN_WORKDIR="/app"
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_0
+
+  stub docker \
+    "pull ubuntu:24.04 : true" \
+    "create --name docker-run-buildkite-plugin-test-job-id --workdir /app -v $(pwd):/app ubuntu:24.04 : true" \
+    "start docker-run-buildkite-plugin-test-job-id : true" \
+    "logs --follow docker-run-buildkite-plugin-test-job-id : true" \
+    "wait docker-run-buildkite-plugin-test-job-id : echo 0"
+
+  run "$PLUGIN_DIR/hooks/command"
+
+  assert_success
+}
+
+@test "propagate-buildkite-environment adds CI and BUILDKITE_* vars" {
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_0
+  export BUILDKITE_PLUGIN_DOCKER_RUN_PROPAGATE_BUILDKITE_ENVIRONMENT="true"
+  export CI="true"
+  export BUILDKITE="true"
+  export BUILDKITE_BRANCH="main"
+
+  # The full set of propagated vars depends on the environment; use :: true
+  # and verify key vars appear in the xtrace output.
+  stub docker \
+    "pull ubuntu:24.04 : true" \
+    ":: true" \
+    "start docker-run-buildkite-plugin-test-job-id : true" \
+    "logs --follow docker-run-buildkite-plugin-test-job-id : true" \
+    "wait docker-run-buildkite-plugin-test-job-id : echo 0"
+
+  run bash -c "${PLUGIN_DIR}/hooks/command 2>&1"
+
+  assert_success
+  assert_output --partial "-e CI"
+  assert_output --partial "-e BUILDKITE "
+  assert_output --partial "-e BUILDKITE_BRANCH"
 }
 
 @test "propagate-docker mounts default socket when DOCKER_HOST is unset" {
