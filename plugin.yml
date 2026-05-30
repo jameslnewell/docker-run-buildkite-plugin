@@ -9,10 +9,8 @@ configuration:
       type: string
       description: "Docker image to run (required)"
     command:
-      type:
-        - string
-        - array
-      description: "Command args to pass directly to the container (no shell wrapper). Use the step's commands field for shell-wrapped execution."
+      type: array
+      description: "Argv to pass as the container CMD (no shell wrapper). Each array item is one token. Use the step's commands field for shell-wrapped execution."
     shell:
       type:
         - array
@@ -23,7 +21,7 @@ configuration:
       description: "Override working directory in the container (defaults to /workdir when mount-checkout is enabled)"
     entrypoint:
       type: string
-      description: "Override container entrypoint. When set, shell wrapping is suppressed for step commands."
+      description: "Override container entrypoint. Set to \"\" to clear the image's ENTRYPOINT (CMD is then run directly or shell-wrapped). Set to a non-empty path to override and suppress shell wrapping for step commands."
     mount-checkout:
       type: boolean
       description: "Mount the agent checkout directory as the working directory inside the container (default: true). The effective workdir defaults to /workdir unless the workdir option is set."

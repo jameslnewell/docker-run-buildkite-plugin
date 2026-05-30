@@ -104,20 +104,17 @@ teardown() {
   unset BUILDKITE_COMMAND
 }
 
-@test "Plugin command string passed as direct docker arg" {
+@test "Plugin command as string errors" {
   unset BUILDKITE_COMMAND
-  export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND="node"
+  export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND="node server.js"
 
   stub docker \
-    "pull ubuntu:24.04 : true" \
-    "create --name docker-run-buildkite-plugin-test-job-id ubuntu:24.04 node : true" \
-    "start docker-run-buildkite-plugin-test-job-id : true" \
-    "logs --follow docker-run-buildkite-plugin-test-job-id : true" \
-    "wait docker-run-buildkite-plugin-test-job-id : echo 0"
+    "pull ubuntu:24.04 : true"
 
   run "$PLUGIN_DIR/hooks/command"
 
-  assert_success
+  assert_failure
+  assert_output --partial "Error:"
 }
 
 @test "Plugin command array items passed as direct docker args" {
@@ -174,6 +171,29 @@ teardown() {
   run "$PLUGIN_DIR/hooks/command"
 
   assert_success
+  unset BUILDKITE_COMMAND
+}
+
+@test "Empty entrypoint clears image ENTRYPOINT and still shell-wraps step commands" {
+  export BUILDKITE_PLUGIN_DOCKER_RUN_ENTRYPOINT=""
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_0
+  export BUILDKITE_COMMAND="aws s3 sync . s3://bucket"
+
+  stub docker \
+    "pull ubuntu:24.04 : true" \
+    ":: true" \
+    "start docker-run-buildkite-plugin-test-job-id : true" \
+    "logs --follow docker-run-buildkite-plugin-test-job-id : true" \
+    "wait docker-run-buildkite-plugin-test-job-id : echo 0"
+
+  run bash -c "${PLUGIN_DIR}/hooks/command 2>&1"
+
+  assert_success
+  # --entrypoint '' is passed (empty string clears the image's ENTRYPOINT)
+  assert_output --partial "--entrypoint"
+  # shell is still applied for step commands
+  assert_output --partial "/bin/sh -e -c"
   unset BUILDKITE_COMMAND
 }
 
