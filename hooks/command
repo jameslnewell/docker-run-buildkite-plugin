@@ -40,14 +40,30 @@ for v in "${VOLUMES[@]}"; do
   CREATE_ARGS+=(-v "$v")
 done
 
-if [[ "${BUILDKITE_PLUGIN_DOCKER_RUN_SSH_AGENT:-false}" == "true" ]]; then
+if [[ "${BUILDKITE_PLUGIN_DOCKER_RUN_PROPAGATE_SSH_AGENT:-false}" == "true" ]]; then
   if [[ -n "${SSH_AUTH_SOCK:-}" ]]; then
     CREATE_ARGS+=(-v "${SSH_AUTH_SOCK}:/run/ssh-agent")
     CREATE_ARGS+=(-e "SSH_AUTH_SOCK=/run/ssh-agent")
   fi
 fi
 
-if [[ "${BUILDKITE_PLUGIN_DOCKER_RUN_DOCKER_FROM_DOCKER:-false}" == "true" ]]; then
+if [[ "${BUILDKITE_PLUGIN_DOCKER_RUN_PROPAGATE_AWS:-false}" == "true" ]]; then
+  CREATE_ARGS+=(-e "AWS_REGION")
+  CREATE_ARGS+=(-e "AWS_DEFAULT_REGION")
+  CREATE_ARGS+=(-e "AWS_ACCESS_KEY_ID")
+  CREATE_ARGS+=(-e "AWS_SECRET_ACCESS_KEY")
+  CREATE_ARGS+=(-e "AWS_SESSION_TOKEN")
+fi
+
+if [[ "${BUILDKITE_PLUGIN_DOCKER_RUN_PROPAGATE_BUILDKITE_AGENT:-false}" == "true" ]]; then
+  BUILDKITE_AGENT_SOCKET="/run/buildkite-agent/buildkite-agent.sock"
+  if [[ -S "${BUILDKITE_AGENT_SOCKET}" ]]; then
+    CREATE_ARGS+=(-v "${BUILDKITE_AGENT_SOCKET}:${BUILDKITE_AGENT_SOCKET}")
+  fi
+  CREATE_ARGS+=(-e "BUILDKITE_AGENT_ACCESS_TOKEN")
+fi
+
+if [[ "${BUILDKITE_PLUGIN_DOCKER_RUN_PROPAGATE_DOCKER:-false}" == "true" ]]; then
   DOCKER_RUN_TMPDIR="$(mktemp -d)"
   DOCKER_HOST_VALUE="${DOCKER_HOST:-unix:///var/run/docker.sock}"
   if [[ "$DOCKER_HOST_VALUE" == unix://* ]]; then
