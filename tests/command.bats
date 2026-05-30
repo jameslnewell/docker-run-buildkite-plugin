@@ -174,11 +174,11 @@ teardown() {
   unset BUILDKITE_COMMAND
 }
 
-@test "Empty entrypoint clears image ENTRYPOINT and still shell-wraps step commands" {
+@test "Empty entrypoint clears image ENTRYPOINT and suppresses shell" {
   export BUILDKITE_PLUGIN_DOCKER_RUN_ENTRYPOINT=""
   unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND
   unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_0
-  export BUILDKITE_COMMAND="aws s3 sync . s3://bucket"
+  export BUILDKITE_COMMAND="make test"
 
   stub docker \
     "pull ubuntu:24.04 : true" \
@@ -190,10 +190,10 @@ teardown() {
   run bash -c "${PLUGIN_DIR}/hooks/command 2>&1"
 
   assert_success
-  # --entrypoint '' is passed (empty string clears the image's ENTRYPOINT)
+  # --entrypoint '' clears the image's ENTRYPOINT (matches official buildkite docker plugin)
   assert_output --partial "--entrypoint"
-  # shell is still applied for step commands
-  assert_output --partial "/bin/sh -e -c"
+  # shell is suppressed — any entrypoint (even "") disables shell wrapping
+  refute_output --partial "/bin/sh -e -c"
   unset BUILDKITE_COMMAND
 }
 
