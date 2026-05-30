@@ -26,16 +26,22 @@ configuration:
       description: "Override container entrypoint"
     environment:
       type: array
-      description: "Environment variables as KEY=VALUE"
+      description: "Environment variables as KEY or KEY=VALUE"
     volumes:
       type: array
       description: "Volume mounts as host:container. Relative host paths (starting with .) are resolved against pwd."
-    docker_from_docker:
+    propagate-docker:
       type: boolean
-      description: "Mount the host Docker socket and a readable copy of the Docker config into the container, enabling Docker-from-Docker"
-    ssh_agent:
+      description: "Mount the host Docker socket and a readable copy of the Docker config, enabling Docker-from-Docker without userns:host"
+    propagate-ssh-agent:
       type: boolean
-      description: "Mount the host SSH agent socket into the container at /run/ssh-agent and set SSH_AUTH_SOCK accordingly, enabling SSH key forwarding"
+      description: "Forward the host SSH agent socket into the container at /run/ssh-agent and set SSH_AUTH_SOCK accordingly"
+    propagate-aws:
+      type: boolean
+      description: "Propagate AWS credential and region env vars (AWS_REGION, AWS_DEFAULT_REGION, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_SESSION_TOKEN)"
+    propagate-buildkite-agent:
+      type: boolean
+      description: "Mount the Buildkite agent socket and propagate BUILDKITE_AGENT_ACCESS_TOKEN so the container can run buildkite-agent commands"
   required:
     - image
   additionalProperties: false
