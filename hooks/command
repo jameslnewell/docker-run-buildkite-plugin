@@ -16,8 +16,14 @@ echo "--- :docker: creating"
 
 CREATE_ARGS=()
 
-workdir="${BUILDKITE_PLUGIN_DOCKER_RUN_WORKDIR:-}"
-[[ -n "$workdir" ]] && CREATE_ARGS+=(--workdir "$workdir")
+if [[ "${BUILDKITE_PLUGIN_DOCKER_RUN_MOUNT_CHECKOUT:-true}" != "false" ]]; then
+  effective_workdir="${BUILDKITE_PLUGIN_DOCKER_RUN_WORKDIR:-/workdir}"
+  CREATE_ARGS+=(--workdir "$effective_workdir")
+  CREATE_ARGS+=(-v "$(pwd):${effective_workdir}")
+else
+  workdir="${BUILDKITE_PLUGIN_DOCKER_RUN_WORKDIR:-}"
+  [[ -n "$workdir" ]] && CREATE_ARGS+=(--workdir "$workdir")
+fi
 
 entrypoint="${BUILDKITE_PLUGIN_DOCKER_RUN_ENTRYPOINT:-}"
 [[ -n "$entrypoint" ]] && CREATE_ARGS+=(--entrypoint "$entrypoint")
@@ -55,6 +61,14 @@ if [[ "${BUILDKITE_PLUGIN_DOCKER_RUN_PROPAGATE_AWS:-false}" == "true" ]]; then
   CREATE_ARGS+=(-e "AWS_SESSION_TOKEN")
 fi
 
+if [[ "${BUILDKITE_PLUGIN_DOCKER_RUN_PROPAGATE_BUILDKITE_ENVIRONMENT:-false}" == "true" ]]; then
+  while IFS='=' read -r key _; do
+    if [[ "$key" == "CI" || "$key" == "BUILDKITE" || "$key" == BUILDKITE_* ]]; then
+      CREATE_ARGS+=(-e "$key")
+    fi
+  done < <(env)
+fi
+
 if [[ "${BUILDKITE_PLUGIN_DOCKER_RUN_PROPAGATE_BUILDKITE_AGENT:-false}" == "true" ]]; then
   BUILDKITE_AGENT_SOCKET="/run/buildkite-agent/buildkite-agent.sock"
   if [[ -S "${BUILDKITE_AGENT_SOCKET}" ]]; then
@@ -85,12 +99,17 @@ if [[ "${BUILDKITE_PLUGIN_DOCKER_RUN_PROPAGATE_DOCKER:-false}" == "true" ]]; the
 fi
 
 mapfile -t CMD_ITEMS < <(plugin_read_list "BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND")
+has_step_commands=false
+[[ -n "${BUILDKITE_COMMAND:-}" ]] && has_step_commands=true
+has_plugin_commands=false
+[[ ${#CMD_ITEMS[@]} -gt 0 ]] && has_plugin_commands=true
 
-if [[ -n "${BUILDKITE_COMMAND:-}" ]]; then
-  echo "Warning: the step's command will not be run inside the container. Specify the command via the docker-run plugin's 'command' option instead."
+if [[ "$has_step_commands" == "true" && "$has_plugin_commands" == "true" ]]; then
+  echo "+++ Error: Cannot specify both step commands and plugin commands. Move commands to the step or to the plugin 'command' option, not both."
+  exit 1
 fi
 
-# Determine shell
+# Determine shell (only applies to step commands)
 SHELL_ARGS=()
 shell_enabled=true
 if [[ "${BUILDKITE_PLUGIN_DOCKER_RUN_SHELL:-}" =~ ^(false|off|0)$ ]]; then
@@ -104,18 +123,22 @@ else
   SHELL_ARGS=("/bin/sh" "-e" "-c")
 fi
 
+# Entrypoint suppresses shell wrapping for step commands
+[[ -n "$entrypoint" ]] && shell_enabled=false
+
 declare -a DOCKER_ARGS=(create --name "$CONTAINER_NAME")
 DOCKER_ARGS+=("${CREATE_ARGS[@]}")
 DOCKER_ARGS+=("$IMAGE")
 
-if [[ ${#CMD_ITEMS[@]} -gt 0 ]]; then
+if [[ "$has_step_commands" == "true" ]]; then
   if [[ "$shell_enabled" == "true" ]]; then
-    DOCKER_ARGS+=("${SHELL_ARGS[@]}")
-    joined_cmd=$(printf '%s\n' "${CMD_ITEMS[@]}")
-    DOCKER_ARGS+=("${joined_cmd%$'\n'}")
+    DOCKER_ARGS+=("${SHELL_ARGS[@]}" "$BUILDKITE_COMMAND")
   else
-    DOCKER_ARGS+=("${CMD_ITEMS[@]}")
+    DOCKER_ARGS+=("$BUILDKITE_COMMAND")
   fi
+elif [[ "$has_plugin_commands" == "true" ]]; then
+  # Plugin commands are passed directly as docker CMD args — no shell wrapper
+  DOCKER_ARGS+=("${CMD_ITEMS[@]}")
 fi
 
 set -x
