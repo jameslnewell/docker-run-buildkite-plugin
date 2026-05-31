@@ -14,7 +14,7 @@ docker pull "$IMAGE"
 
 echo "--- :docker: creating"
 
-CREATE_ARGS=(--tty -e "TERM=${TERM:-xterm}")
+CREATE_ARGS=(--tty)
 
 if [[ "${BUILDKITE_PLUGIN_DOCKER_RUN_MOUNT_CHECKOUT:-true}" != "false" ]]; then
   effective_workdir="${BUILDKITE_PLUGIN_DOCKER_RUN_WORKDIR:-/workdir}"
