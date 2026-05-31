@@ -14,7 +14,7 @@ docker pull "$IMAGE"
 
 echo "--- :docker: creating"
 
-CREATE_ARGS=(--tty -e "TERM=${TERM:-xterm}")
+CREATE_ARGS=(--tty)
 
 if [[ "${BUILDKITE_PLUGIN_DOCKER_RUN_MOUNT_CHECKOUT:-true}" != "false" ]]; then
   effective_workdir="${BUILDKITE_PLUGIN_DOCKER_RUN_WORKDIR:-/workdir}"
@@ -161,9 +161,4 @@ docker "${DOCKER_ARGS[@]}"
 { set +x; } 2>/dev/null
 
 echo "+++ :docker: running"
-set -x
-docker start "$CONTAINER_NAME"
-{ set +x; } 2>/dev/null
-docker logs --follow "$CONTAINER_NAME"
-EXIT_CODE=$(docker wait "$CONTAINER_NAME")
-exit "$EXIT_CODE"
+docker start --attach "$CONTAINER_NAME"
