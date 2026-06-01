@@ -7,8 +7,10 @@ CONTAINER_NAME="docker-run-buildkite-plugin-${BUILDKITE_JOB_ID}"
 # out of the way of the main command's log groups.
 if [[ "${BUILDKITE_PLUGIN_DOCKER_RUN_HOOK:-command}" == "pre-command" ]]; then
   _GROUP="~~~"
+  _RUN_GROUP="~~~"
 else
   _GROUP="---"
+  _RUN_GROUP="+++"
 fi
 
 echo "${_GROUP} :docker: pulling"
@@ -164,5 +166,5 @@ set -x
 docker "${DOCKER_ARGS[@]}"
 { set +x; } 2>/dev/null
 
-echo "${_GROUP} :docker: running"
+echo "${_RUN_GROUP} :docker: running"
 docker start --attach "$CONTAINER_NAME"
