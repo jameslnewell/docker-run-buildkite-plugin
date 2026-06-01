@@ -3,6 +3,10 @@ set -euo pipefail
 
 CONTAINER_NAME="docker-run-buildkite-plugin-${BUILDKITE_JOB_ID}"
 
+# Leading space keeps the xtrace prefix from colliding with Buildkite's
+# ---/+++/~~~ log-group markers when this hook is sourced (see lib/run.bash).
+PS4=' + '
+
 echo "~~~ :docker: removing"
 set -x
 docker rm -f "$CONTAINER_NAME" 2>/dev/null || true

@@ -70,6 +70,26 @@ teardown() {
   assert_success
 }
 
+@test "xtrace prefix never collides with Buildkite log-group markers" {
+  export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND=""
+
+  stub docker \
+    "pull ubuntu:24.04 : true" \
+    "create --name docker-run-buildkite-plugin-test-job-id --tty ubuntu:24.04 : true" \
+    "start --attach docker-run-buildkite-plugin-test-job-id : true"
+
+  # The agent sources the hook (which sources run.bash), so set -x runs deep
+  # enough that the default PS4='+ ' would trace as '+++ docker ...' — a group
+  # header. Source the hook here to reproduce that depth and assert no traced
+  # docker command begins with a ---/+++/~~~ marker.
+  run bash -c 'source "'"${PLUGIN_DIR}"'/hooks/command" 2>&1'
+
+  assert_success
+  # Legit group headers (e.g. "+++ :docker: running") are fine; only flag a
+  # marker immediately followed by a traced "docker <verb>" command.
+  refute_line --regexp '^[-+~]+ docker (pull|create|start)'
+}
+
 @test "Runs step command in shell" {
   unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND
   unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_0
