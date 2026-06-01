@@ -15,7 +15,7 @@ fi
 
 echo "${_GROUP} :docker: pulling"
 set -x
-docker pull "$IMAGE"
+docker pull --progress=plain "$IMAGE"
 { set +x; } 2>/dev/null
 
 echo "${_GROUP} :docker: creating"
