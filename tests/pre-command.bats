@@ -55,7 +55,7 @@ teardown() {
   export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_2="secrets:pull"
 
   stub docker \
-    "pull ubuntu:24.04 : true" \
+    "pull --progress=plain ubuntu:24.04 : true" \
     "create --name docker-run-buildkite-plugin-test-job-id --tty ubuntu:24.04 npm run secrets:pull : true" \
     "start --attach docker-run-buildkite-plugin-test-job-id : true"
 
@@ -74,7 +74,7 @@ teardown() {
   export BUILDKITE_PLUGIN_DOCKER_RUN_VOLUMES_1="/host/env.d/:/workdir/env.d/"
 
   stub docker \
-    "pull ubuntu:24.04 : true" \
+    "pull --progress=plain ubuntu:24.04 : true" \
     "create --name docker-run-buildkite-plugin-test-job-id --tty -v /host/file.yml:/workdir/file.yml:ro -v /host/env.d/:/workdir/env.d/ -e AWS_REGION -e AWS_DEFAULT_REGION -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY -e AWS_SESSION_TOKEN ubuntu:24.04 npm run secrets:pull : true" \
     "start --attach docker-run-buildkite-plugin-test-job-id : true"
 
