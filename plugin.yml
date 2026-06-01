@@ -46,6 +46,10 @@ configuration:
     propagate-buildkite-environment:
       type: boolean
       description: "Propagate CI, BUILDKITE and all BUILDKITE_* env vars from the host into the container"
+    hook:
+      type: string
+      enum: [command, pre-command]
+      description: "Buildkite hook phase to run in. Defaults to command. Set to pre-command to run as setup before the main command hook (e.g. to pull secrets or write env files before a docker-compose-run step)."
   required:
     - image
   additionalProperties: false

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
 set -euo pipefail
-[[ "${BUILDKITE_PLUGIN_DOCKER_RUN_HOOK:-command}" == "pre-command" ]] && exit 0
+[[ "${BUILDKITE_PLUGIN_DOCKER_RUN_HOOK:-command}" != "pre-command" ]] && exit 0
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${DIR}/../lib/run.bash"
