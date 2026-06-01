@@ -61,7 +61,7 @@ teardown() {
   export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND=""
 
   stub docker \
-    "pull --progress=plain ubuntu:24.04 : true" \
+    "pull ubuntu:24.04 : true" \
     "create --name docker-run-buildkite-plugin-test-job-id --tty ubuntu:24.04 : true" \
     "start --attach docker-run-buildkite-plugin-test-job-id : true"
 
@@ -76,7 +76,7 @@ teardown() {
   export BUILDKITE_COMMAND="make test"
 
   stub docker \
-    "pull --progress=plain ubuntu:24.04 : true" \
+    "pull ubuntu:24.04 : true" \
     "create --name docker-run-buildkite-plugin-test-job-id --tty ubuntu:24.04 /bin/sh -e -c \"make test\" : true" \
     "start --attach docker-run-buildkite-plugin-test-job-id : true"
 
@@ -91,7 +91,7 @@ teardown() {
   export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND="echo plugin"
 
   stub docker \
-    "pull --progress=plain ubuntu:24.04 : true"
+    "pull ubuntu:24.04 : true"
 
   run "$PLUGIN_DIR/hooks/command"
 
@@ -105,7 +105,7 @@ teardown() {
   export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND="node server.js"
 
   stub docker \
-    "pull --progress=plain ubuntu:24.04 : true"
+    "pull ubuntu:24.04 : true"
 
   run "$PLUGIN_DIR/hooks/command"
 
@@ -119,7 +119,7 @@ teardown() {
   export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_1="server.js"
 
   stub docker \
-    "pull --progress=plain ubuntu:24.04 : true" \
+    "pull ubuntu:24.04 : true" \
     "create --name docker-run-buildkite-plugin-test-job-id --tty ubuntu:24.04 node server.js : true" \
     "start --attach docker-run-buildkite-plugin-test-job-id : true"
 
@@ -135,7 +135,7 @@ teardown() {
   export BUILDKITE_COMMAND="make test"
 
   stub docker \
-    "pull --progress=plain ubuntu:24.04 : true" \
+    "pull ubuntu:24.04 : true" \
     "create --name docker-run-buildkite-plugin-test-job-id --tty ubuntu:24.04 \"make test\" : true" \
     "start --attach docker-run-buildkite-plugin-test-job-id : true"
 
@@ -154,7 +154,7 @@ teardown() {
   export BUILDKITE_COMMAND="make test"
 
   stub docker \
-    "pull --progress=plain ubuntu:24.04 : true" \
+    "pull ubuntu:24.04 : true" \
     "create --name docker-run-buildkite-plugin-test-job-id --tty ubuntu:24.04 /bin/bash -e -c \"make test\" : true" \
     "start --attach docker-run-buildkite-plugin-test-job-id : true"
 
@@ -171,7 +171,7 @@ teardown() {
   export BUILDKITE_COMMAND="make test"
 
   stub docker \
-    "pull --progress=plain ubuntu:24.04 : true" \
+    "pull ubuntu:24.04 : true" \
     ":: true" \
     "start --attach docker-run-buildkite-plugin-test-job-id : true"
 
@@ -192,7 +192,7 @@ teardown() {
   export BUILDKITE_COMMAND="make test"
 
   stub docker \
-    "pull --progress=plain ubuntu:24.04 : true" \
+    "pull ubuntu:24.04 : true" \
     "create --name docker-run-buildkite-plugin-test-job-id --tty --entrypoint /bin/sh ubuntu:24.04 \"make test\" : true" \
     "start --attach docker-run-buildkite-plugin-test-job-id : true"
 
@@ -210,7 +210,7 @@ teardown() {
   export BUILDKITE_COMMAND="make test"
 
   stub docker \
-    "pull --progress=plain ubuntu:24.04 : true"
+    "pull ubuntu:24.04 : true"
 
   run "$PLUGIN_DIR/hooks/command"
 
@@ -223,7 +223,7 @@ teardown() {
   export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND="echo hello"
 
   stub docker \
-    "pull --progress=plain ubuntu:24.04 : true"
+    "pull ubuntu:24.04 : true"
 
   run "$PLUGIN_DIR/hooks/command"
 
@@ -265,7 +265,7 @@ teardown() {
   export BUILDKITE_PLUGIN_DOCKER_RUN_WORKDIR="/app"
 
   stub docker \
-    "pull --progress=plain ubuntu:24.04 : true" \
+    "pull ubuntu:24.04 : true" \
     "create --name docker-run-buildkite-plugin-test-job-id --tty --workdir /app ubuntu:24.04 : true" \
     "start --attach docker-run-buildkite-plugin-test-job-id : true"
 
@@ -282,7 +282,7 @@ teardown() {
   export BUILDKITE_PLUGIN_DOCKER_RUN_ENTRYPOINT="/bin/bash"
 
   stub docker \
-    "pull --progress=plain ubuntu:24.04 : true" \
+    "pull ubuntu:24.04 : true" \
     "create --name docker-run-buildkite-plugin-test-job-id --tty --entrypoint /bin/bash ubuntu:24.04 : true" \
     "start --attach docker-run-buildkite-plugin-test-job-id : true"
 
@@ -298,7 +298,7 @@ teardown() {
   unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_2
   export BUILDKITE_PLUGIN_DOCKER_RUN_IMAGE="invalid/image:nonexistent"
 
-  stub docker "pull --progress=plain invalid/image:nonexistent : exit 1"
+  stub docker "pull invalid/image:nonexistent : exit 1"
 
   run "$PLUGIN_DIR/hooks/command"
 
@@ -313,7 +313,7 @@ teardown() {
   unset BUILDKITE_COMMAND
 
   stub docker \
-    "pull --progress=plain ubuntu:24.04 : true" \
+    "pull ubuntu:24.04 : true" \
     "create --name docker-run-buildkite-plugin-test-job-id --tty --workdir /workspace --entrypoint /bin/sh ubuntu:24.04 node server.js : true" \
     "start --attach docker-run-buildkite-plugin-test-job-id : true"
 
@@ -329,7 +329,7 @@ teardown() {
   unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_0
 
   stub docker \
-    "pull --progress=plain ubuntu:24.04 : true" \
+    "pull ubuntu:24.04 : true" \
     "create --name docker-run-buildkite-plugin-test-job-id --tty --workdir /workdir -v $(pwd):/workdir ubuntu:24.04 : true" \
     "start --attach docker-run-buildkite-plugin-test-job-id : true"
 
@@ -344,7 +344,7 @@ teardown() {
   unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_0
 
   stub docker \
-    "pull --progress=plain ubuntu:24.04 : true" \
+    "pull ubuntu:24.04 : true" \
     "create --name docker-run-buildkite-plugin-test-job-id --tty ubuntu:24.04 : true" \
     "start --attach docker-run-buildkite-plugin-test-job-id : true"
 
@@ -360,7 +360,7 @@ teardown() {
   unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_0
 
   stub docker \
-    "pull --progress=plain ubuntu:24.04 : true" \
+    "pull ubuntu:24.04 : true" \
     "create --name docker-run-buildkite-plugin-test-job-id --tty --workdir /app -v $(pwd):/app ubuntu:24.04 : true" \
     "start --attach docker-run-buildkite-plugin-test-job-id : true"
 
@@ -380,7 +380,7 @@ teardown() {
   # The full set of propagated vars depends on the environment; use :: true
   # and verify key vars appear in the xtrace output.
   stub docker \
-    "pull --progress=plain ubuntu:24.04 : true" \
+    "pull ubuntu:24.04 : true" \
     ":: true" \
     "start --attach docker-run-buildkite-plugin-test-job-id : true"
 
@@ -412,7 +412,7 @@ teardown() {
     "0644 /tmp/docker-run-test-tmpdir/config.json : true"
 
   stub docker \
-    "pull --progress=plain ubuntu:24.04 : true" \
+    "pull ubuntu:24.04 : true" \
     "create --name docker-run-buildkite-plugin-test-job-id --tty -v /var/run/docker.sock:/var/run/docker.sock -v /tmp/docker-run-test-tmpdir/config.json:/root/.docker/config.json ubuntu:24.04 : true" \
     "start --attach docker-run-buildkite-plugin-test-job-id : true"
 
@@ -442,7 +442,7 @@ teardown() {
     "0644 /tmp/docker-run-test-tmpdir/config.json : true"
 
   stub docker \
-    "pull --progress=plain ubuntu:24.04 : true" \
+    "pull ubuntu:24.04 : true" \
     "create --name docker-run-buildkite-plugin-test-job-id --tty -v /run/user/1000/docker.sock:/var/run/docker.sock -v /tmp/docker-run-test-tmpdir/config.json:/root/.docker/config.json ubuntu:24.04 : true" \
     "start --attach docker-run-buildkite-plugin-test-job-id : true"
 
@@ -472,7 +472,7 @@ teardown() {
     "0644 /tmp/docker-run-test-tmpdir/config.json : true"
 
   stub docker \
-    "pull --progress=plain ubuntu:24.04 : true" \
+    "pull ubuntu:24.04 : true" \
     "create --name docker-run-buildkite-plugin-test-job-id --tty -e DOCKER_HOST=tcp://localhost:2375 -v /tmp/docker-run-test-tmpdir/config.json:/root/.docker/config.json ubuntu:24.04 : true" \
     "start --attach docker-run-buildkite-plugin-test-job-id : true"
 
@@ -494,7 +494,7 @@ teardown() {
     "-d : echo /tmp/docker-run-test-tmpdir"
 
   stub docker \
-    "pull --progress=plain ubuntu:24.04 : true" \
+    "pull ubuntu:24.04 : true" \
     "create --name docker-run-buildkite-plugin-test-job-id --tty -v /var/run/docker.sock:/var/run/docker.sock ubuntu:24.04 : true" \
     "start --attach docker-run-buildkite-plugin-test-job-id : true"
 
@@ -510,7 +510,7 @@ teardown() {
   export BUILDKITE_PLUGIN_DOCKER_RUN_VOLUMES_0=".:/workdir"
 
   stub docker \
-    "pull --progress=plain ubuntu:24.04 : true" \
+    "pull ubuntu:24.04 : true" \
     "create --name docker-run-buildkite-plugin-test-job-id --tty -v $(pwd):/workdir ubuntu:24.04 : true" \
     "start --attach docker-run-buildkite-plugin-test-job-id : true"
 
@@ -525,7 +525,7 @@ teardown() {
   export BUILDKITE_PLUGIN_DOCKER_RUN_VOLUMES_0="./packages/foo:/workdir"
 
   stub docker \
-    "pull --progress=plain ubuntu:24.04 : true" \
+    "pull ubuntu:24.04 : true" \
     "create --name docker-run-buildkite-plugin-test-job-id --tty -v $(pwd)/packages/foo:/workdir ubuntu:24.04 : true" \
     "start --attach docker-run-buildkite-plugin-test-job-id : true"
 
@@ -540,7 +540,7 @@ teardown() {
   export BUILDKITE_PLUGIN_DOCKER_RUN_VOLUMES_0="/abs:/workdir"
 
   stub docker \
-    "pull --progress=plain ubuntu:24.04 : true" \
+    "pull ubuntu:24.04 : true" \
     "create --name docker-run-buildkite-plugin-test-job-id --tty -v /abs:/workdir ubuntu:24.04 : true" \
     "start --attach docker-run-buildkite-plugin-test-job-id : true"
 
@@ -555,7 +555,7 @@ teardown() {
   export BUILDKITE_PLUGIN_DOCKER_RUN_VOLUMES_0="/workdir/node_modules"
 
   stub docker \
-    "pull --progress=plain ubuntu:24.04 : true" \
+    "pull ubuntu:24.04 : true" \
     "create --name docker-run-buildkite-plugin-test-job-id --tty -v /workdir/node_modules ubuntu:24.04 : true" \
     "start --attach docker-run-buildkite-plugin-test-job-id : true"
 
@@ -571,7 +571,7 @@ teardown() {
   export SSH_AUTH_SOCK="/run/ssh-agent.sock"
 
   stub docker \
-    "pull --progress=plain ubuntu:24.04 : true" \
+    "pull ubuntu:24.04 : true" \
     "create --name docker-run-buildkite-plugin-test-job-id --tty -v /run/ssh-agent.sock:/run/ssh-agent -e SSH_AUTH_SOCK=/run/ssh-agent ubuntu:24.04 : true" \
     "start --attach docker-run-buildkite-plugin-test-job-id : true"
 
@@ -587,7 +587,7 @@ teardown() {
   export BUILDKITE_PLUGIN_DOCKER_RUN_PROPAGATE_SSH_AGENT="true"
 
   stub docker \
-    "pull --progress=plain ubuntu:24.04 : true" \
+    "pull ubuntu:24.04 : true" \
     "create --name docker-run-buildkite-plugin-test-job-id --tty ubuntu:24.04 : true" \
     "start --attach docker-run-buildkite-plugin-test-job-id : true"
 
@@ -602,7 +602,7 @@ teardown() {
   export BUILDKITE_PLUGIN_DOCKER_RUN_PROPAGATE_AWS="true"
 
   stub docker \
-    "pull --progress=plain ubuntu:24.04 : true" \
+    "pull ubuntu:24.04 : true" \
     "create --name docker-run-buildkite-plugin-test-job-id --tty -e AWS_REGION -e AWS_DEFAULT_REGION -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY -e AWS_SESSION_TOKEN ubuntu:24.04 : true" \
     "start --attach docker-run-buildkite-plugin-test-job-id : true"
 
@@ -626,7 +626,7 @@ teardown() {
   # We can't easily override the hardcoded path, so test against the actual path
   # This test verifies the env var is propagated; socket mounting depends on the path existing
   stub docker \
-    "pull --progress=plain ubuntu:24.04 : true" \
+    "pull ubuntu:24.04 : true" \
     "create --name docker-run-buildkite-plugin-test-job-id --tty -e BUILDKITE_AGENT_ACCESS_TOKEN ubuntu:24.04 : true" \
     "start --attach docker-run-buildkite-plugin-test-job-id : true"
 
