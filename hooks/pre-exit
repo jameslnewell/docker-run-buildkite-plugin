@@ -3,7 +3,7 @@ set -euo pipefail
 
 CONTAINER_NAME="docker-run-buildkite-plugin-${BUILDKITE_JOB_ID}"
 
-echo "--- :docker: removing"
+echo "~~~ :docker: removing"
 set -x
 docker rm -f "$CONTAINER_NAME" 2>/dev/null || true
 { set +x; } 2>/dev/null
