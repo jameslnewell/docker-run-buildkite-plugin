@@ -3,12 +3,20 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/shared.bash"
 IMAGE="${BUILDKITE_PLUGIN_DOCKER_RUN_IMAGE}"
 CONTAINER_NAME="docker-run-buildkite-plugin-${BUILDKITE_JOB_ID}"
 
-echo "--- :docker: pulling"
+# Use collapsed log groups (~~~) in pre-command mode so setup output stays
+# out of the way of the main command's log groups.
+if [[ "${BUILDKITE_PLUGIN_DOCKER_RUN_HOOK:-command}" == "pre-command" ]]; then
+  _GROUP="~~~"
+else
+  _GROUP="---"
+fi
+
+echo "${_GROUP} :docker: pulling"
 set -x
 docker pull "$IMAGE"
 { set +x; } 2>/dev/null
 
-echo "--- :docker: creating"
+echo "${_GROUP} :docker: creating"
 
 CREATE_ARGS=(--tty)
 
@@ -156,5 +164,5 @@ set -x
 docker "${DOCKER_ARGS[@]}"
 { set +x; } 2>/dev/null
 
-echo "+++ :docker: running"
+echo "${_GROUP} :docker: running"
 docker start --attach "$CONTAINER_NAME"
