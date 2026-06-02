@@ -8,8 +8,10 @@ CONTAINER_NAME="docker-run-buildkite-plugin-${BUILDKITE_JOB_ID}"
 # few shell-nesting levels deep, and bash replicates PS4's first character once
 # per level — the default '+ ' becomes '+++ ', which Buildkite then parses as a
 # group header (each traced command becomes its own section, leaving our
-# intended groups empty). A leading space can never form a marker at any depth.
-PS4=' + '
+# intended groups empty). An empty PS4 emits no prefix at all (bash does not
+# fall back to a default), so the traced command itself starts the line — and
+# every command we trace begins with `docker`, never a marker.
+PS4=''
 
 # Use collapsed log groups (~~~) in pre-command mode so setup output stays
 # out of the way of the main command's log groups.
