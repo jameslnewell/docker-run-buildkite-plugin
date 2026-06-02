@@ -88,6 +88,9 @@ teardown() {
   # Legit group headers (e.g. "+++ :docker: running") are fine; only flag a
   # marker immediately followed by a traced "docker <verb>" command.
   refute_line --regexp '^[-+~]+ docker (pull|create|start)'
+  # Empty PS4 means traced commands start at column 0 with no prefix at all —
+  # lock that in so we don't regress to an indented prefix.
+  assert_line --regexp '^docker (pull|create|start)'
 }
 
 @test "Runs step command in shell" {
