@@ -592,10 +592,31 @@ teardown() {
   unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_0
   export BUILDKITE_PLUGIN_DOCKER_RUN_PROPAGATE_SSH_AGENT="true"
   export SSH_AUTH_SOCK="/run/ssh-agent.sock"
+  # Point HOME at an empty dir so the known_hosts mount stays out of this case.
+  export HOME="$BATS_TEST_TMPDIR"
 
   stub docker \
     "pull ubuntu:24.04 : true" \
     "create --name docker-run-buildkite-plugin-test-job-id --tty -v /run/ssh-agent.sock:/run/ssh-agent -e SSH_AUTH_SOCK=/run/ssh-agent ubuntu:24.04 : true" \
+    "start --attach docker-run-buildkite-plugin-test-job-id : true"
+
+  run "$PLUGIN_DIR/hooks/command"
+
+  assert_success
+}
+
+@test "propagate-ssh-agent also mounts known_hosts as the global known_hosts when present" {
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_0
+  export BUILDKITE_PLUGIN_DOCKER_RUN_PROPAGATE_SSH_AGENT="true"
+  export SSH_AUTH_SOCK="/run/ssh-agent.sock"
+  export HOME="$BATS_TEST_TMPDIR"
+  mkdir -p "${HOME}/.ssh"
+  touch "${HOME}/.ssh/known_hosts"
+
+  stub docker \
+    "pull ubuntu:24.04 : true" \
+    "create --name docker-run-buildkite-plugin-test-job-id --tty -v /run/ssh-agent.sock:/run/ssh-agent -e SSH_AUTH_SOCK=/run/ssh-agent -v ${HOME}/.ssh/known_hosts:/etc/ssh/ssh_known_hosts:ro ubuntu:24.04 : true" \
     "start --attach docker-run-buildkite-plugin-test-job-id : true"
 
   run "$PLUGIN_DIR/hooks/command"

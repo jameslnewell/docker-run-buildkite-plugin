@@ -69,6 +69,16 @@ if [[ "${BUILDKITE_PLUGIN_DOCKER_RUN_PROPAGATE_SSH_AGENT:-false}" == "true" ]]; 
   if [[ -n "${SSH_AUTH_SOCK:-}" ]]; then
     CREATE_ARGS+=(-v "${SSH_AUTH_SOCK}:/run/ssh-agent")
     CREATE_ARGS+=(-e "SSH_AUTH_SOCK=/run/ssh-agent")
+    # Carry the agent's host-key trust into the container as the global known_hosts.
+    # Without it, git/ssh over SSH hits an interactive "authenticity of host ...
+    # can't be established" prompt — and because the container is always allocated a
+    # TTY (see --tty above), that prompt blocks forever instead of failing fast.
+    # Mounting at /etc/ssh/ssh_known_hosts (rather than /root/.ssh/known_hosts) means
+    # any container user trusts the host, not just root.
+    KNOWN_HOSTS="${HOME:-/var/lib/buildkite-agent}/.ssh/known_hosts"
+    if [[ -f "${KNOWN_HOSTS}" ]]; then
+      CREATE_ARGS+=(-v "${KNOWN_HOSTS}:/etc/ssh/ssh_known_hosts:ro")
+    fi
   fi
 fi
 
