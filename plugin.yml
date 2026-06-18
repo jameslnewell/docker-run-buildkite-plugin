@@ -36,7 +36,7 @@ configuration:
       description: "Mount the host Docker socket and a readable copy of the Docker config, enabling Docker-from-Docker without userns:host"
     propagate-ssh-agent:
       type: boolean
-      description: "Forward the host SSH agent socket into the container at /run/ssh-agent and set SSH_AUTH_SOCK accordingly"
+      description: "Forward the host SSH agent socket into the container at /run/ssh-agent and set SSH_AUTH_SOCK accordingly. Also mounts the agent's ~/.ssh/known_hosts (when present) at /etc/ssh/ssh_known_hosts so git/ssh trusts known hosts instead of hanging on an interactive host-key prompt."
     propagate-aws:
       type: boolean
       description: "Propagate AWS credential and region env vars (AWS_REGION, AWS_DEFAULT_REGION, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_SESSION_TOKEN)"
