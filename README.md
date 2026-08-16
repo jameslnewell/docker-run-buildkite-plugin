@@ -81,7 +81,7 @@ steps:
           propagate-aws: true
 ```
 
-Run as setup before the step's own command — for example to fetch secrets into the checkout before the step runs. In `pre-command` mode the plugin only runs its own `command`, so the step keeps its command:
+Bracket the step's own command with setup and teardown by listing the plugin twice — `hook: pre-command` runs before the step, `hook: post-command` after it. In both modes the plugin only runs its own `command`, so the step keeps its command:
 
 ```yaml
 steps:
@@ -92,9 +92,16 @@ steps:
           image: amazon/aws-cli:latest
           propagate-aws: true
           command: ["s3", "cp", "s3://my-bucket/.env", ".env"]
+      - jameslnewell/docker-run#v0.14.0:
+          hook: post-command
+          image: amazon/aws-cli:latest
+          propagate-aws: true
+          command: ["s3", "cp", "junit.xml", "s3://my-bucket/reports/"]
 ```
 
-The same works when the command hook belongs to another plugin — for example fetching secrets before a `docker-compose-run` step:
+`post-command` runs whether the step's command passed or failed, which is what you want for collecting reports — but it means a teardown that can't cope with a failed step needs to check for itself. With `propagate-buildkite-environment: true` the container gets `BUILDKITE_COMMAND_EXIT_STATUS` to branch on.
+
+`pre-command` also works when the command hook belongs to another plugin — for example fetching secrets before a `docker-compose-run` step:
 
 ```yaml
 steps:
@@ -114,7 +121,7 @@ steps:
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `image` | string | — | **Required.** Docker image to run. |
-| `command` | array | — | Argv passed as the container CMD, with no shell wrapper. Each array item is one token. Cannot be combined with the step's `command` — except under `hook: pre-command`, where the step's command is not the plugin's to run. |
+| `command` | array | — | Argv passed as the container CMD, with no shell wrapper. Each array item is one token. Cannot be combined with the step's `command` — except under `hook: pre-command` or `hook: post-command`, where the step's command is not the plugin's to run. |
 | `shell` | array or boolean | `["/bin/sh", "-e", "-c"]` | Shell used to wrap the step's command. Set to `false` to pass the command through unwrapped. Has no effect when the plugin's `command` option is used. |
 | `workdir` | string | `/workdir` when `mount-checkout` is enabled, otherwise the image's | Working directory inside the container. |
 | `entrypoint` | string | — | Override the image's `ENTRYPOINT`. Any value — including `""` — also suppresses shell wrapping, matching the official `docker` plugin. Use `""` to clear an image's entrypoint while passing `command` args directly. |
@@ -126,7 +133,7 @@ steps:
 | `propagate-aws` | boolean | `false` | Propagate `AWS_REGION`, `AWS_DEFAULT_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` and `AWS_SESSION_TOKEN`. |
 | `propagate-buildkite-agent` | boolean | `false` | Mount the Buildkite agent socket and propagate `BUILDKITE_AGENT_ACCESS_TOKEN`, so the container can run `buildkite-agent` commands. |
 | `propagate-buildkite-environment` | boolean | `false` | Propagate `CI`, `BUILDKITE` and every `BUILDKITE_*` variable from the agent. |
-| `hook` | `command` or `pre-command` | `command` | Buildkite hook phase to run in. Use `pre-command` to run as setup before the main command hook — its log groups are collapsed so they stay out of the way, and only the plugin's `command` is run. |
+| `hook` | `command`, `pre-command` or `post-command` | `command` | Buildkite hook phase to run in. Use `pre-command` to run as setup before the main command hook, or `post-command` to run as teardown after it. Both collapse their log groups so they stay out of the way, and both run only the plugin's `command`. |
 
 `additionalProperties` is disabled, so an unrecognised or misspelled option fails validation rather than being silently ignored.
 
@@ -144,7 +151,7 @@ The plugin fails the step, rather than silently picking one, when the configurat
 - `shell` is given as a string instead of an array or `false`.
 - `shell` is set as an array while `entrypoint` is also set, since `entrypoint` suppresses shell wrapping.
 
-The first of those does not apply to `hook: pre-command`. There the step's command is run later, by the agent or another plugin's command hook, so it is never a candidate for the container's command and cannot conflict with the plugin's `command`. A `pre-command` step with no plugin `command` runs the image's own `CMD`.
+The first of those does not apply to `hook: pre-command` or `hook: post-command`. There the step's command belongs to the command hook — the agent's, or another plugin's — so it is never a candidate for the container's command and cannot conflict with the plugin's `command`. A `pre-command` or `post-command` entry with no plugin `command` runs the image's own `CMD`.
 
 ## How it works
 
@@ -154,6 +161,8 @@ The first of those does not apply to `hook: pre-command`. There the step's comma
 4. **Cleanup** — the `pre-exit` hook always runs `docker rm -f`, and removes the temporary Docker config copy created by `propagate-docker`
 
 Each phase is its own log group, so you can fold and expand them independently and see exactly where time is spent.
+
+Containers are named `docker-run-buildkite-plugin-<job id>`, with the hook phase appended under `pre-command` and `post-command`. That keeps a step that lists the plugin more than once from reusing a name that is still taken — containers live until `pre-exit`, which Buildkite runs once per plugin entry, so each run cleans up its own.
 
 ## Other plugins that may be useful
 

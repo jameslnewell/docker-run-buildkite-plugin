@@ -56,8 +56,8 @@ teardown() {
 
   stub docker \
     "pull ubuntu:24.04 : true" \
-    "create --name docker-run-buildkite-plugin-test-job-id --tty ubuntu:24.04 npm run secrets:pull : true" \
-    "start --attach docker-run-buildkite-plugin-test-job-id : true"
+    "create --name docker-run-buildkite-plugin-test-job-id-pre-command --tty ubuntu:24.04 npm run secrets:pull : true" \
+    "start --attach docker-run-buildkite-plugin-test-job-id-pre-command : true"
 
   run "$PLUGIN_DIR/hooks/pre-command"
 
@@ -75,8 +75,8 @@ teardown() {
 
   stub docker \
     "pull ubuntu:24.04 : true" \
-    "create --name docker-run-buildkite-plugin-test-job-id --tty -v /host/file.yml:/workdir/file.yml:ro -v /host/env.d/:/workdir/env.d/ -e AWS_REGION -e AWS_DEFAULT_REGION -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY -e AWS_SESSION_TOKEN ubuntu:24.04 npm run secrets:pull : true" \
-    "start --attach docker-run-buildkite-plugin-test-job-id : true"
+    "create --name docker-run-buildkite-plugin-test-job-id-pre-command --tty -v /host/file.yml:/workdir/file.yml:ro -v /host/env.d/:/workdir/env.d/ -e AWS_REGION -e AWS_DEFAULT_REGION -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY -e AWS_SESSION_TOKEN ubuntu:24.04 npm run secrets:pull : true" \
+    "start --attach docker-run-buildkite-plugin-test-job-id-pre-command : true"
 
   run "$PLUGIN_DIR/hooks/pre-command"
 
@@ -94,8 +94,8 @@ teardown() {
 
   stub docker \
     "pull ubuntu:24.04 : true" \
-    "create --name docker-run-buildkite-plugin-test-job-id --tty ubuntu:24.04 npm run secrets:pull : true" \
-    "start --attach docker-run-buildkite-plugin-test-job-id : true"
+    "create --name docker-run-buildkite-plugin-test-job-id-pre-command --tty ubuntu:24.04 npm run secrets:pull : true" \
+    "start --attach docker-run-buildkite-plugin-test-job-id-pre-command : true"
 
   run "$PLUGIN_DIR/hooks/pre-command"
 
@@ -113,8 +113,8 @@ teardown() {
   # No plugin command and no step command of ours to run — the image's own CMD runs.
   stub docker \
     "pull ubuntu:24.04 : true" \
-    "create --name docker-run-buildkite-plugin-test-job-id --tty ubuntu:24.04 : true" \
-    "start --attach docker-run-buildkite-plugin-test-job-id : true"
+    "create --name docker-run-buildkite-plugin-test-job-id-pre-command --tty ubuntu:24.04 : true" \
+    "start --attach docker-run-buildkite-plugin-test-job-id-pre-command : true"
 
   run "$PLUGIN_DIR/hooks/pre-command"
 
