@@ -83,6 +83,61 @@ teardown() {
   assert_success
 }
 
+# --- pre-command ignores the step's command ---
+
+@test "hooks/pre-command runs the plugin command when the step also has a command" {
+  export BUILDKITE_PLUGIN_DOCKER_RUN_HOOK="pre-command"
+  export BUILDKITE_COMMAND="make test"
+  export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_0="npm"
+  export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_1="run"
+  export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_2="secrets:pull"
+
+  stub docker \
+    "pull ubuntu:24.04 : true" \
+    "create --name docker-run-buildkite-plugin-test-job-id --tty ubuntu:24.04 npm run secrets:pull : true" \
+    "start --attach docker-run-buildkite-plugin-test-job-id : true"
+
+  run "$PLUGIN_DIR/hooks/pre-command"
+
+  assert_success
+  refute_output --partial "Error:"
+  unset BUILDKITE_COMMAND
+}
+
+@test "hooks/pre-command leaves the step's command to the command hook" {
+  export BUILDKITE_PLUGIN_DOCKER_RUN_HOOK="pre-command"
+  export BUILDKITE_COMMAND="make test"
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_0
+
+  # No plugin command and no step command of ours to run — the image's own CMD runs.
+  stub docker \
+    "pull ubuntu:24.04 : true" \
+    "create --name docker-run-buildkite-plugin-test-job-id --tty ubuntu:24.04 : true" \
+    "start --attach docker-run-buildkite-plugin-test-job-id : true"
+
+  run "$PLUGIN_DIR/hooks/pre-command"
+
+  assert_success
+  unset BUILDKITE_COMMAND
+}
+
+@test "hooks/command still errors when both step and plugin commands are specified" {
+  export BUILDKITE_PLUGIN_DOCKER_RUN_HOOK="command"
+  export BUILDKITE_COMMAND="make test"
+  export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_0="npm"
+  export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_1="test"
+
+  stub docker \
+    "pull ubuntu:24.04 : true"
+
+  run "$PLUGIN_DIR/hooks/command"
+
+  assert_failure
+  assert_output --partial "Error:"
+  unset BUILDKITE_COMMAND
+}
+
 @test "hooks/pre-command has valid bash syntax" {
   bash -n "$PLUGIN_DIR/hooks/pre-command"
 }

@@ -10,7 +10,7 @@ configuration:
       description: "Docker image to run (required)"
     command:
       type: array
-      description: "Argv to pass as the container CMD (no shell wrapper). Each array item is one token. Use the step's commands field for shell-wrapped execution."
+      description: "Argv to pass as the container CMD (no shell wrapper). Each array item is one token. Use the step's commands field for shell-wrapped execution. Cannot be combined with the step's command under the default command hook; under hook: pre-command the step's command is not run by this plugin, so both may be set."
     shell:
       type:
         - array
@@ -49,7 +49,7 @@ configuration:
     hook:
       type: string
       enum: [command, pre-command]
-      description: "Buildkite hook phase to run in. Defaults to command. Set to pre-command to run as setup before the main command hook (e.g. to pull secrets or write env files before a docker-compose-run step)."
+      description: "Buildkite hook phase to run in. Defaults to command. Set to pre-command to run as setup before the main command hook (e.g. to pull secrets or write env files before the step's command or a docker-compose-run step). In pre-command mode only the plugin's command option is run; the step's command is left to the command hook."
   required:
     - image
   additionalProperties: false
