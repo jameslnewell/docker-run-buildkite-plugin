@@ -1,7 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-CONTAINER_NAME="docker-run-buildkite-plugin-${BUILDKITE_JOB_ID}"
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${DIR}/../lib/shared.bash"
+
+# Buildkite runs pre-exit once per plugin entry, each with that entry's own
+# config, so a step that brackets its command with this plugin cleans up the
+# pre-command container on one pass and the post-command container on the next.
+CONTAINER_NAME="$(plugin_run_name)"
 
 # Empty PS4 keeps the xtrace prefix from colliding with Buildkite's
 # ---/+++/~~~ log-group markers when this hook is sourced (see lib/run.bash).
@@ -12,7 +18,7 @@ set -x
 docker rm -f "$CONTAINER_NAME" 2>/dev/null || true
 { set +x; } 2>/dev/null
 
-TMPDIR_FILE="/tmp/docker-run-buildkite-plugin-${BUILDKITE_JOB_ID}.tmpdir"
+TMPDIR_FILE="/tmp/${CONTAINER_NAME}.tmpdir"
 if [[ -f "$TMPDIR_FILE" ]]; then
   DOCKER_RUN_TMPDIR="$(cat "$TMPDIR_FILE")"
   rm -rf "$DOCKER_RUN_TMPDIR"

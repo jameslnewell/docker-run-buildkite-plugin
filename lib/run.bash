@@ -1,7 +1,8 @@
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/shared.bash"
 
 IMAGE="${BUILDKITE_PLUGIN_DOCKER_RUN_IMAGE}"
-CONTAINER_NAME="docker-run-buildkite-plugin-${BUILDKITE_JOB_ID}"
+HOOK="${BUILDKITE_PLUGIN_DOCKER_RUN_HOOK:-command}"
+CONTAINER_NAME="$(plugin_run_name)"
 
 # Buildkite treats lines beginning with ---, +++ or ~~~ as log-group headers.
 # The agent *sources* this hook (which sources this file), so `set -x` runs a
@@ -13,16 +14,14 @@ CONTAINER_NAME="docker-run-buildkite-plugin-${BUILDKITE_JOB_ID}"
 # every command we trace begins with `docker`, never a marker.
 PS4=''
 
-HOOK="${BUILDKITE_PLUGIN_DOCKER_RUN_HOOK:-command}"
-
-# Use collapsed log groups (~~~) in pre-command mode so setup output stays
-# out of the way of the main command's log groups.
-if [[ "$HOOK" == "pre-command" ]]; then
-  _GROUP="~~~"
-  _RUN_GROUP="~~~"
-else
+# The pre-command and post-command hooks bracket someone else's command, so
+# their log groups are collapsed (~~~) to stay out of the way of it.
+if [[ "$HOOK" == "command" ]]; then
   _GROUP="---"
   _RUN_GROUP="+++"
+else
+  _GROUP="~~~"
+  _RUN_GROUP="~~~"
 fi
 
 echo "${_GROUP} :docker: pulling"
@@ -130,7 +129,7 @@ if [[ "${BUILDKITE_PLUGIN_DOCKER_RUN_PROPAGATE_DOCKER:-false}" == "true" ]]; the
     chmod 0644 "${DOCKER_RUN_TMPDIR}/config.json"
     CREATE_ARGS+=(-v "${DOCKER_RUN_TMPDIR}/config.json:/root/.docker/config.json")
   fi
-  echo "$DOCKER_RUN_TMPDIR" > "/tmp/docker-run-buildkite-plugin-${BUILDKITE_JOB_ID}.tmpdir"
+  echo "$DOCKER_RUN_TMPDIR" > "/tmp/${CONTAINER_NAME}.tmpdir"
 fi
 
 if [[ -n "${BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND:-}" && -z "${BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_0:-}" ]]; then
@@ -141,13 +140,14 @@ mapfile -t CMD_ITEMS < <(plugin_read_list "BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND")
 has_plugin_commands=false
 [[ ${#CMD_ITEMS[@]} -gt 0 ]] && has_plugin_commands=true
 
-# In pre-command mode the step's command belongs to whoever runs the command
-# hook afterwards — the agent, or another plugin — so it is not ours to run and
-# cannot conflict with the plugin's own command. BUILDKITE_COMMAND is already
-# exported by the time pre-command fires, so treating it as a conflict would
-# fail every step that has both a command and this plugin as setup.
+# Only the command hook runs the step's command. Under pre-command and
+# post-command it belongs to whoever owns the command hook — the agent, or
+# another plugin — so it is not ours to run and cannot conflict with the
+# plugin's own command. BUILDKITE_COMMAND is already exported by the time those
+# hooks fire, so treating it as a conflict would fail every step that has both
+# a command and this plugin bracketing it.
 has_step_commands=false
-if [[ "$HOOK" != "pre-command" ]]; then
+if [[ "$HOOK" == "command" ]]; then
   [[ -n "${BUILDKITE_COMMAND:-}" ]] && has_step_commands=true
 
   if [[ "$has_step_commands" == "true" && "$has_plugin_commands" == "true" ]]; then

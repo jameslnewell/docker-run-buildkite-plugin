@@ -8,6 +8,8 @@ setup() {
 
 teardown() {
   docker rm -f "docker-run-buildkite-plugin-${BUILDKITE_JOB_ID}" 2>/dev/null || true
+  docker rm -f "docker-run-buildkite-plugin-${BUILDKITE_JOB_ID}-pre-command" 2>/dev/null || true
+  docker rm -f "docker-run-buildkite-plugin-${BUILDKITE_JOB_ID}-post-command" 2>/dev/null || true
 }
 
 skip_if_no_docker() {
@@ -60,6 +62,27 @@ skip_if_no_docker() {
   # Container should not exist after cleanup
   run docker inspect "docker-run-buildkite-plugin-${BUILDKITE_JOB_ID}"
   [[ $status -ne 0 ]]
+}
+
+@test "integration: brackets a step with a pre-command and a post-command run" {
+  skip_if_no_docker
+
+  # The step keeps its own command; both plugin runs live in the same job, so
+  # they would clash if the container name were keyed on the job alone.
+  export BUILDKITE_COMMAND="echo the step's own command"
+  export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_0="echo"
+
+  export BUILDKITE_PLUGIN_DOCKER_RUN_HOOK="pre-command"
+  export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_1="before"
+  run bash "$PLUGIN_PATH/hooks/pre-command"
+  [[ $status -eq 0 ]]
+  [[ "$output" == *"before"* ]]
+
+  export BUILDKITE_PLUGIN_DOCKER_RUN_HOOK="post-command"
+  export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_1="after"
+  run bash "$PLUGIN_PATH/hooks/post-command"
+  [[ $status -eq 0 ]]
+  [[ "$output" == *"after"* ]]
 }
 
 @test "integration: handles command failure gracefully" {

@@ -28,9 +28,11 @@ Options not defined in the Compose spec follow either the Docker CLI's naming or
 | `propagate-aws` | `BUILDKITE_PLUGIN_DOCKER_RUN_PROPAGATE_AWS` | Propagate AWS credential and region env vars |
 | `propagate-buildkite-agent` | `BUILDKITE_PLUGIN_DOCKER_RUN_PROPAGATE_BUILDKITE_AGENT` | Mount the Buildkite agent socket and token |
 | `propagate-buildkite-environment` | `BUILDKITE_PLUGIN_DOCKER_RUN_PROPAGATE_BUILDKITE_ENVIRONMENT` | Propagate `CI`, `BUILDKITE` and `BUILDKITE_*` |
-| `hook` | `BUILDKITE_PLUGIN_DOCKER_RUN_HOOK` | Hook phase to run in (`command` or `pre-command`) |
+| `hook` | `BUILDKITE_PLUGIN_DOCKER_RUN_HOOK` | Hook phase to run in (`command`, `pre-command` or `post-command`) |
 
 Array options are read with `plugin_read_list` in [`lib/shared.bash`](./lib/shared.bash), which reads the `_0`, `_1`, … indexed variables the agent exports for YAML arrays and falls back to the unindexed variable for scalars.
+
+Every hook file is a router: `hooks/<phase>` exits immediately unless the `hook` option selects that phase, then sources [`lib/run.bash`](./lib/run.bash), which does the actual work for all three. Adding a phase means adding a router and extending the `hook` enum — the run logic branches only on `command` versus the rest.
 
 ## Testing
 
