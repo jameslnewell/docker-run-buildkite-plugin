@@ -557,6 +557,36 @@ teardown() {
   assert_success
 }
 
+@test "Dotfile volume host path is unchanged" {
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_0
+  export BUILDKITE_PLUGIN_DOCKER_RUN_VOLUMES_0=".env:/app/.env"
+
+  stub docker \
+    "pull ubuntu:24.04 : true" \
+    "create --name docker-run-buildkite-plugin-test-job-id --tty -v .env:/app/.env ubuntu:24.04 : true" \
+    "start --attach docker-run-buildkite-plugin-test-job-id : true"
+
+  run "$PLUGIN_DIR/hooks/command"
+
+  assert_success
+}
+
+@test "Named volume host path is unchanged" {
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_0
+  export BUILDKITE_PLUGIN_DOCKER_RUN_VOLUMES_0="node-modules-cache:/workdir/node_modules"
+
+  stub docker \
+    "pull ubuntu:24.04 : true" \
+    "create --name docker-run-buildkite-plugin-test-job-id --tty -v node-modules-cache:/workdir/node_modules ubuntu:24.04 : true" \
+    "start --attach docker-run-buildkite-plugin-test-job-id : true"
+
+  run "$PLUGIN_DIR/hooks/command"
+
+  assert_success
+}
+
 @test "Absolute volume path is unchanged" {
   unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND
   unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_0

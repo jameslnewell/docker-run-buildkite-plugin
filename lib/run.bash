@@ -57,8 +57,12 @@ for v in "${VOLUMES[@]}"; do
   if [[ "$v" == *:* ]]; then
     host="${v%%:*}"
     rest="${v#*:}"
-    if [[ "$host" == .* ]]; then
-      host="$(pwd)${host#.}"
+    # Only `.` and `./…` are relative paths. A bare leading dot is part of the
+    # filename (`.env`, `.git`), so treating it as relative mounted `<pwd>env`.
+    if [[ "$host" == "." ]]; then
+      host="$(pwd)"
+    elif [[ "$host" == ./* ]]; then
+      host="$(pwd)/${host#./}"
     fi
     v="${host}:${rest}"
   fi
