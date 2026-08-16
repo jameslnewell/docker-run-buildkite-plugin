@@ -17,7 +17,7 @@ Run the step's command inside an image. By default the checkout is mounted at `/
 steps:
   - command: make test
     plugins:
-      - jameslnewell/docker-run#v0.14.0:
+      - jameslnewell/docker-run#v0.16.0:
           image: node:20
           environment:
             - CI=true
@@ -28,7 +28,7 @@ Run a command defined by the plugin instead of the step. Each array item is one 
 ```yaml
 steps:
   - plugins:
-      - jameslnewell/docker-run#v0.14.0:
+      - jameslnewell/docker-run#v0.16.0:
           image: ubuntu:24.04
           command:
             - bash
@@ -42,7 +42,7 @@ Keep the container's `node_modules` out of the mounted checkout with an anonymou
 steps:
   - command: npm ci && npm test
     plugins:
-      - jameslnewell/docker-run#v0.14.0:
+      - jameslnewell/docker-run#v0.16.0:
           image: node:20
           volumes:
             - /workdir/node_modules
@@ -54,7 +54,7 @@ Build and push images from inside the container by propagating the host Docker s
 steps:
   - command: ./scripts/build-and-push.sh
     plugins:
-      - jameslnewell/docker-run#v0.14.0:
+      - jameslnewell/docker-run#v0.16.0:
           image: docker:27
           propagate-docker: true
 ```
@@ -65,7 +65,7 @@ Clone private repositories by propagating the agent's SSH agent:
 steps:
   - command: npm ci
     plugins:
-      - jameslnewell/docker-run#v0.14.0:
+      - jameslnewell/docker-run#v0.16.0:
           image: node:20
           propagate-ssh-agent: true
 ```
@@ -75,7 +75,7 @@ Pass credentials to a step that talks to AWS. The image's `aws` entrypoint is le
 ```yaml
 steps:
   - plugins:
-      - jameslnewell/docker-run#v0.14.0:
+      - jameslnewell/docker-run#v0.16.0:
           image: amazon/aws-cli:latest
           command: ["ecr", "get-login-password"]
           propagate-aws: true
@@ -87,12 +87,12 @@ Bracket the step's own command with setup and teardown by listing the plugin twi
 steps:
   - command: npm test
     plugins:
-      - jameslnewell/docker-run#v0.14.0:
+      - jameslnewell/docker-run#v0.16.0:
           hook: pre-command
           image: amazon/aws-cli:latest
           propagate-aws: true
           command: ["s3", "cp", "s3://my-bucket/.env", ".env"]
-      - jameslnewell/docker-run#v0.14.0:
+      - jameslnewell/docker-run#v0.16.0:
           hook: post-command
           image: amazon/aws-cli:latest
           propagate-aws: true
@@ -106,7 +106,7 @@ steps:
 ```yaml
 steps:
   - plugins:
-      - jameslnewell/docker-run#v0.14.0:
+      - jameslnewell/docker-run#v0.16.0:
           hook: pre-command
           image: amazon/aws-cli:latest
           propagate-aws: true
