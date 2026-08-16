@@ -81,7 +81,20 @@ steps:
           propagate-aws: true
 ```
 
-Run as setup before another plugin's command hook — for example to fetch secrets into the checkout before a `docker-compose-run` step. The step itself must not declare a `command`, so give each plugin its own (see [Commands and shells](#commands-and-shells)):
+Run as setup before the step's own command — for example to fetch secrets into the checkout before the step runs. In `pre-command` mode the plugin only runs its own `command`, so the step keeps its command:
+
+```yaml
+steps:
+  - command: npm test
+    plugins:
+      - jameslnewell/docker-run#v0.14.0:
+          hook: pre-command
+          image: amazon/aws-cli:latest
+          propagate-aws: true
+          command: ["s3", "cp", "s3://my-bucket/.env", ".env"]
+```
+
+The same works when the command hook belongs to another plugin — for example fetching secrets before a `docker-compose-run` step:
 
 ```yaml
 steps:
@@ -101,7 +114,7 @@ steps:
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `image` | string | — | **Required.** Docker image to run. |
-| `command` | array | — | Argv passed as the container CMD, with no shell wrapper. Each array item is one token. Cannot be combined with the step's `command`. |
+| `command` | array | — | Argv passed as the container CMD, with no shell wrapper. Each array item is one token. Cannot be combined with the step's `command` — except under `hook: pre-command`, where the step's command is not the plugin's to run. |
 | `shell` | array or boolean | `["/bin/sh", "-e", "-c"]` | Shell used to wrap the step's command. Set to `false` to pass the command through unwrapped. Has no effect when the plugin's `command` option is used. |
 | `workdir` | string | `/workdir` when `mount-checkout` is enabled, otherwise the image's | Working directory inside the container. |
 | `entrypoint` | string | — | Override the image's `ENTRYPOINT`. Any value — including `""` — also suppresses shell wrapping, matching the official `docker` plugin. Use `""` to clear an image's entrypoint while passing `command` args directly. |
@@ -113,13 +126,13 @@ steps:
 | `propagate-aws` | boolean | `false` | Propagate `AWS_REGION`, `AWS_DEFAULT_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` and `AWS_SESSION_TOKEN`. |
 | `propagate-buildkite-agent` | boolean | `false` | Mount the Buildkite agent socket and propagate `BUILDKITE_AGENT_ACCESS_TOKEN`, so the container can run `buildkite-agent` commands. |
 | `propagate-buildkite-environment` | boolean | `false` | Propagate `CI`, `BUILDKITE` and every `BUILDKITE_*` variable from the agent. |
-| `hook` | `command` or `pre-command` | `command` | Buildkite hook phase to run in. Use `pre-command` to run as setup before the main command hook — its log groups are collapsed so they stay out of the way. |
+| `hook` | `command` or `pre-command` | `command` | Buildkite hook phase to run in. Use `pre-command` to run as setup before the main command hook — its log groups are collapsed so they stay out of the way, and only the plugin's `command` is run. |
 
 `additionalProperties` is disabled, so an unrecognised or misspelled option fails validation rather than being silently ignored.
 
 ### Commands and shells
 
-The container's command comes from either the step or the plugin, never both:
+Under the default `hook: command`, the container's command comes from either the step or the plugin, never both:
 
 - **Step command** — `BUILDKITE_COMMAND` is wrapped in `shell` (`/bin/sh -e -c` by default) and passed as the container CMD. This is what most steps want, because it supports multi-line scripts, pipes and `&&`.
 - **Plugin `command`** — the array is passed as argv directly, with no shell. Use it for steps that have no command of their own.
@@ -131,7 +144,7 @@ The plugin fails the step, rather than silently picking one, when the configurat
 - `shell` is given as a string instead of an array or `false`.
 - `shell` is set as an array while `entrypoint` is also set, since `entrypoint` suppresses shell wrapping.
 
-The first of those applies to `hook: pre-command` too — the step's command is already set by the time the pre-command hook runs, so a step that declares a `command` cannot also give this plugin one. Move the step's command into the plugin that consumes it.
+The first of those does not apply to `hook: pre-command`. There the step's command is run later, by the agent or another plugin's command hook, so it is never a candidate for the container's command and cannot conflict with the plugin's `command`. A `pre-command` step with no plugin `command` runs the image's own `CMD`.
 
 ## How it works
 
