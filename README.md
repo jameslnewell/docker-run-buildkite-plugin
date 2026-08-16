@@ -1,46 +1,34 @@
 # Docker Run Buildkite Plugin
 
-Run a command in a Docker image with phase-level timing and automatic cleanup. Each phase (pull, create, run) appears as a separate log group in Buildkite, making it easy to spot where time is spent. The container is always cleaned up, even if the command fails.
+A [Buildkite plugin](https://buildkite.com/docs/plugins) that runs a step's command in a Docker image, with phase-level timing and automatic cleanup.
+
+Each phase (pull, create, run) is a separate log group in Buildkite, so it's easy to see where the time went. The container is always removed on exit, even when the command fails.
 
 ## Requirements
 
-- Docker 25+
-
-## Configuration
-
-| Option | Type | Required | Description |
-|--------|------|----------|-------------|
-| `image` | string | ✓ | Docker image to run |
-| `command` | string or array | — | Command to run in the container. A warning is emitted if not set while the step has a `command`. |
-| `workdir` | string | — | Override working directory in the container |
-| `entrypoint` | string | — | Override container entrypoint |
-| `env` | array | — | Environment variables as `KEY=VALUE` |
-| `volume` | array | — | Volume mounts as `host:container`. Relative host paths (starting with `.`) are resolved against `pwd`. |
-| `docker_from_docker` | boolean | — | Mount the host Docker socket and a readable copy of the Docker config, enabling Docker-from-Docker. Socket path is derived from `DOCKER_HOST` (defaults to `unix:///var/run/docker.sock`). |
+- The `docker` CLI available to the Buildkite agent. The plugin only uses `docker pull`, `docker create`, `docker start` and `docker rm`.
+- `propagate-buildkite-agent` additionally requires the agent socket at `/run/buildkite-agent/buildkite-agent.sock`.
 
 ## Usage
 
-Add the plugin to your pipeline:
+Run the step's command inside an image. By default the checkout is mounted at `/workdir` and the command is wrapped in `/bin/sh -e -c`:
 
 ```yaml
 steps:
   - command: make test
     plugins:
-      - jameslnewell/docker-run#v1.0.0:
+      - jameslnewell/docker-run#v0.14.0:
           image: node:20
-          workdir: /app
-          volume:
-            - /workspace:/app
-          env:
+          environment:
             - CI=true
 ```
 
-Run a command directly in Docker:
+Run a command defined by the plugin instead of the step. Each array item is one argv token — there is no shell, so `&&`, pipes and globs are not interpreted:
 
 ```yaml
 steps:
   - plugins:
-      - jameslnewell/docker-run#v1.0.0:
+      - jameslnewell/docker-run#v0.14.0:
           image: ubuntu:24.04
           command:
             - bash
@@ -48,72 +36,117 @@ steps:
             - "apt-get update && apt-get install -y curl"
 ```
 
-Mount the current checkout and run tests with Docker-from-Docker enabled so the container can build and push images:
+Keep the container's `node_modules` out of the mounted checkout with an anonymous volume:
 
 ```yaml
 steps:
-  - plugins:
-      - jameslnewell/docker-run#v1.0.0:
+  - command: npm ci && npm test
+    plugins:
+      - jameslnewell/docker-run#v0.14.0:
           image: node:20
-          workdir: /workdir
-          volume:
-            - .:/workdir
+          volumes:
             - /workdir/node_modules
-          docker_from_docker: true
-          env:
-            - CI=true
 ```
 
-Pass through AWS region environment variables:
+Build and push images from inside the container by propagating the host Docker socket:
+
+```yaml
+steps:
+  - command: ./scripts/build-and-push.sh
+    plugins:
+      - jameslnewell/docker-run#v0.14.0:
+          image: docker:27
+          propagate-docker: true
+```
+
+Clone private repositories by propagating the agent's SSH agent:
+
+```yaml
+steps:
+  - command: npm ci
+    plugins:
+      - jameslnewell/docker-run#v0.14.0:
+          image: node:20
+          propagate-ssh-agent: true
+```
+
+Pass credentials to a step that talks to AWS. The image's `aws` entrypoint is left in place, so `command` only supplies its arguments:
 
 ```yaml
 steps:
   - plugins:
-      - jameslnewell/docker-run#v1.0.0:
+      - jameslnewell/docker-run#v0.14.0:
           image: amazon/aws-cli:latest
-          command: ecr get-login-password
-          env:
-            - AWS_REGION
-            - AWS_DEFAULT_REGION
+          command: ["ecr", "get-login-password"]
+          propagate-aws: true
 ```
 
-## How It Works
+Run as setup before another plugin's command hook — for example to fetch secrets into the checkout before a `docker-compose-run` step. The step itself must not declare a `command`, so give each plugin its own (see [Commands and shells](#commands-and-shells)):
 
-The plugin:
+```yaml
+steps:
+  - plugins:
+      - jameslnewell/docker-run#v0.14.0:
+          hook: pre-command
+          image: amazon/aws-cli:latest
+          propagate-aws: true
+          command: ["s3", "cp", "s3://my-bucket/.env", ".env"]
+      - jameslnewell/docker-compose-run#v0.14.1:
+          service: test
+          command: ["npm", "test"]
+```
 
-1. **Pull**: Downloads the Docker image (`docker pull`)
-2. **Create**: Creates a container with your configuration (`docker create`)
-3. **Run**: Starts the container and streams logs (`docker start` + `docker logs --follow`)
-4. **Cleanup**: Always removes the container on exit (`docker rm -f`)
+## Configuration
 
-Each phase is a separate log group in Buildkite, so you can see exactly where time is spent and fold/expand them independently.
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `image` | string | — | **Required.** Docker image to run. |
+| `command` | array | — | Argv passed as the container CMD, with no shell wrapper. Each array item is one token. Cannot be combined with the step's `command`. |
+| `shell` | array or boolean | `["/bin/sh", "-e", "-c"]` | Shell used to wrap the step's command. Set to `false` to pass the command through unwrapped. Has no effect when the plugin's `command` option is used. |
+| `workdir` | string | `/workdir` when `mount-checkout` is enabled, otherwise the image's | Working directory inside the container. |
+| `entrypoint` | string | — | Override the image's `ENTRYPOINT`. Any value — including `""` — also suppresses shell wrapping, matching the official `docker` plugin. Use `""` to clear an image's entrypoint while passing `command` args directly. |
+| `mount-checkout` | boolean | `true` | Mount the agent checkout directory at the working directory inside the container. |
+| `environment` | array | — | Environment variables as `KEY` (propagated from the agent) or `KEY=VALUE`. |
+| `volumes` | array | — | Volume mounts as `host:container`, or a bare container path for an anonymous volume. Host paths beginning with `.` are resolved against `pwd`, so `.:/app` mounts the checkout. |
+| `propagate-docker` | boolean | `false` | Mount the host Docker socket and a readable copy of the Docker config, enabling Docker-from-Docker without `userns:host`. The socket path is derived from `DOCKER_HOST` (default `unix:///var/run/docker.sock`); for a TCP daemon, `DOCKER_HOST` is passed through instead. |
+| `propagate-ssh-agent` | boolean | `false` | Forward the agent's SSH agent socket to `/run/ssh-agent` and set `SSH_AUTH_SOCK`. Also mounts the agent's `~/.ssh/known_hosts` (when present) at `/etc/ssh/ssh_known_hosts`, so `git`/`ssh` trust known hosts instead of hanging on an interactive host-key prompt. |
+| `propagate-aws` | boolean | `false` | Propagate `AWS_REGION`, `AWS_DEFAULT_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` and `AWS_SESSION_TOKEN`. |
+| `propagate-buildkite-agent` | boolean | `false` | Mount the Buildkite agent socket and propagate `BUILDKITE_AGENT_ACCESS_TOKEN`, so the container can run `buildkite-agent` commands. |
+| `propagate-buildkite-environment` | boolean | `false` | Propagate `CI`, `BUILDKITE` and every `BUILDKITE_*` variable from the agent. |
+| `hook` | `command` or `pre-command` | `command` | Buildkite hook phase to run in. Use `pre-command` to run as setup before the main command hook — its log groups are collapsed so they stay out of the way. |
+
+`additionalProperties` is disabled, so an unrecognised or misspelled option fails validation rather than being silently ignored.
+
+### Commands and shells
+
+The container's command comes from either the step or the plugin, never both:
+
+- **Step command** — `BUILDKITE_COMMAND` is wrapped in `shell` (`/bin/sh -e -c` by default) and passed as the container CMD. This is what most steps want, because it supports multi-line scripts, pipes and `&&`.
+- **Plugin `command`** — the array is passed as argv directly, with no shell. Use it for steps that have no command of their own.
+
+The plugin fails the step, rather than silently picking one, when the configuration is ambiguous:
+
+- Both a step command and the plugin's `command` are set.
+- `command` is given as a string instead of an array.
+- `shell` is given as a string instead of an array or `false`.
+- `shell` is set as an array while `entrypoint` is also set, since `entrypoint` suppresses shell wrapping.
+
+The first of those applies to `hook: pre-command` too — the step's command is already set by the time the pre-command hook runs, so a step that declares a `command` cannot also give this plugin one. Move the step's command into the plugin that consumes it.
+
+## How it works
+
+1. **Pull** — `docker pull <image>`
+2. **Create** — `docker create` with the configured workdir, mounts, environment and command. A TTY is always allocated, so tools that colourise their output when attached to a terminal keep doing so in the build log.
+3. **Run** — `docker start --attach`, streaming the container's output into the step log
+4. **Cleanup** — the `pre-exit` hook always runs `docker rm -f`, and removes the temporary Docker config copy created by `propagate-docker`
+
+Each phase is its own log group, so you can fold and expand them independently and see exactly where time is spent.
 
 ## Other plugins that may be useful
 
 - [docker-compose-run](https://github.com/jameslnewell/docker-compose-run-buildkite-plugin) — Run a docker compose service with phase-level timing and automatic cleanup
 - [docker-compose-build](https://github.com/jameslnewell/docker-compose-build-buildkite-plugin) — Build and push a docker compose service using `docker buildx bake`
 
-## Testing
+## Contributing
 
-Tests are written using [bats](https://github.com/bats-core/bats-core). The unit tests stub Docker commands and require [bats-support](https://github.com/bats-core/bats-support), [bats-assert](https://github.com/bats-core/bats-assert), and [bats-mock](https://github.com/buildkite-plugins/bats-mock).
-
-Install the dependencies (macOS):
-
-```bash
-brew tap bats-core/bats-core
-brew install bash bats-core bats-core/bats-core/bats-support bats-core/bats-core/bats-assert
-# bats-mock is not in Homebrew — clone it alongside the others:
-git clone https://github.com/buildkite-plugins/bats-mock "$(brew --prefix)/lib/bats-mock"
-```
-
-Run the unit tests (no Docker required):
-
-```bash
-PATH="$(brew --prefix)/bin:$PATH" BATS_LIB_PATH="$(brew --prefix)/lib" bats tests/command.bats tests/pre-exit.bats
-```
-
-Run the integration tests (requires Docker):
-
-```bash
-bats tests/integration.bats
-```
+See [DEVELOPMENT.md](./DEVELOPMENT.md) for how to run the tests and cut a release.
