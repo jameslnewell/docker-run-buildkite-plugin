@@ -415,6 +415,26 @@ teardown() {
   assert_output --partial "-e BUILDKITE_BRANCH"
 }
 
+@test "propagate-buildkite-environment ignores lines inside a multi-line value" {
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_0
+  export BUILDKITE_PLUGIN_DOCKER_RUN_PROPAGATE_BUILDKITE_ENVIRONMENT="true"
+  # A real commit message spans lines; reading `env` line-by-line would take the
+  # second line for another NAME=VALUE record and forward BUILDKITE_NOT_A_VAR.
+  export BUILDKITE_MESSAGE=$'fix: something\nBUILDKITE_NOT_A_VAR=surprise'
+
+  stub docker \
+    "pull ubuntu:24.04 : true" \
+    ":: true" \
+    "start --attach docker-run-buildkite-plugin-test-job-id : true"
+
+  run bash -c "${PLUGIN_DIR}/hooks/command 2>&1"
+
+  assert_success
+  assert_output --partial "-e BUILDKITE_MESSAGE"
+  refute_output --partial "BUILDKITE_NOT_A_VAR"
+}
+
 @test "propagate-docker mounts default socket when DOCKER_HOST is unset" {
   unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND
   unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_0
