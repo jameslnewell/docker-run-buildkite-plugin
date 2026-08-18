@@ -36,6 +36,22 @@ steps:
             - "apt-get update && apt-get install -y curl"
 ```
 
+A single array item may span multiple lines, which is how you hand a whole script to a shell of your choosing:
+
+```yaml
+steps:
+  - plugins:
+      - jameslnewell/docker-run#v0.14.0:
+          image: hashicorp/terraform:1.15
+          command:
+            - /bin/sh
+            - -ec
+            - |
+              cd terraform/production
+              terraform init
+              terraform plan
+```
+
 Keep the container's `node_modules` out of the mounted checkout with an anonymous volume:
 
 ```yaml

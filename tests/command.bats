@@ -22,38 +22,52 @@ teardown() {
   unstub chmod 2>/dev/null || true
 }
 
-@test "plugin_read_list with scalar value" {
+@test "plugin_read_list_into_result with scalar value" {
   export MY_VAR="single-value"
-  mapfile -t result < <(plugin_read_list "MY_VAR")
+  plugin_read_list_into_result "MY_VAR"
+  [[ "${#result[@]}" -eq 1 ]]
   [[ "${result[0]}" == "single-value" ]]
 }
 
-@test "plugin_read_list with indexed array" {
+@test "plugin_read_list_into_result with indexed array" {
   export MY_VAR_0="first"
   export MY_VAR_1="second"
   export MY_VAR_2="third"
-  result=$(plugin_read_list "MY_VAR")
-  [[ "$result" == $'first\nsecond\nthird' ]]
-}
-
-@test "plugin_read_list with indexed array reads all items under set -e" {
-  # Regression: (( i++ )) returns exit code 1 when i=0, which set -e in a
-  # process substitution subshell would turn into an early exit, silently
-  # dropping all items after index 0.
-  export MY_VAR_0="first"
-  export MY_VAR_1="second"
-  export MY_VAR_2="third"
-  mapfile -t result < <(set -e; plugin_read_list "MY_VAR")
+  plugin_read_list_into_result "MY_VAR"
   [[ "${#result[@]}" -eq 3 ]]
   [[ "${result[0]}" == "first" ]]
   [[ "${result[1]}" == "second" ]]
   [[ "${result[2]}" == "third" ]]
 }
 
-@test "plugin_read_list with empty result" {
+@test "plugin_read_list_into_result with indexed array reads all items under set -e" {
+  # Regression: (( i++ )) returns exit code 1 when i=0, which set -e would turn
+  # into an early return, silently dropping all items after index 0.
+  export MY_VAR_0="first"
+  export MY_VAR_1="second"
+  export MY_VAR_2="third"
+  run bash -c "set -e; source $PLUGIN_DIR/lib/shared.bash; plugin_read_list_into_result 'MY_VAR'; printf '%s\n' \"\${#result[@]}\""
+  assert_success
+  assert_output "3"
+}
+
+@test "plugin_read_list_into_result keeps a multi-line item as one entry" {
+  # Regression: the list used to be printed newline-delimited and re-read with
+  # mapfile -t, which split a multi-line item into one entry per line.
+  export MY_VAR_0="/bin/sh"
+  export MY_VAR_1="-ec"
+  export MY_VAR_2=$'cd terraform\nterraform init'
+  plugin_read_list_into_result "MY_VAR"
+  [[ "${#result[@]}" -eq 3 ]]
+  [[ "${result[2]}" == $'cd terraform\nterraform init' ]]
+}
+
+@test "plugin_read_list_into_result with empty result" {
   unset MY_VAR
   unset MY_VAR_0
-  mapfile -t result < <(plugin_read_list "MY_VAR")
+  run plugin_read_list_into_result "MY_VAR"
+  assert_failure
+  plugin_read_list_into_result "MY_VAR" || true
   [[ "${#result[@]}" == "0" ]]
 }
 
@@ -144,6 +158,25 @@ teardown() {
   stub docker \
     "pull ubuntu:24.04 : true" \
     "create --name docker-run-buildkite-plugin-test-job-id --tty ubuntu:24.04 node server.js : true" \
+    "start --attach docker-run-buildkite-plugin-test-job-id : true"
+
+  run "$PLUGIN_DIR/hooks/command"
+
+  assert_success
+}
+
+@test "Multi-line plugin command item stays a single docker arg" {
+  # Regression: a `command:` item holding a whole shell script used to be split
+  # into one argv entry per line, so `sh -c` ran only the first line (typically
+  # a `cd`) and bound the rest to $0, $1, … — silently, and with exit status 0.
+  unset BUILDKITE_COMMAND
+  export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_0="/bin/sh"
+  export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_1="-ec"
+  export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_2=$'cd terraform\nterraform init'
+
+  stub docker \
+    "pull ubuntu:24.04 : true" \
+    "create --name docker-run-buildkite-plugin-test-job-id --tty ubuntu:24.04 /bin/sh -ec \$'cd terraform\nterraform init' : true" \
     "start --attach docker-run-buildkite-plugin-test-job-id : true"
 
   run "$PLUGIN_DIR/hooks/command"
@@ -258,7 +291,7 @@ teardown() {
   export BUILDKITE_PLUGIN_DOCKER_RUN_ENVIRONMENT_0="DATABASE_URL=postgres://localhost"
   export BUILDKITE_PLUGIN_DOCKER_RUN_ENVIRONMENT_1="NODE_ENV=test"
 
-  run bash -c "source $PLUGIN_DIR/lib/shared.bash; plugin_read_list 'BUILDKITE_PLUGIN_DOCKER_RUN_ENVIRONMENT'"
+  run bash -c "source $PLUGIN_DIR/lib/shared.bash; plugin_read_list_into_result 'BUILDKITE_PLUGIN_DOCKER_RUN_ENVIRONMENT'; printf '%s\n' \"\${result[@]}\""
 
   [[ $status -eq 0 ]]
   [[ "$output" == *"DATABASE_URL=postgres://localhost"* ]]
@@ -269,7 +302,7 @@ teardown() {
   export BUILDKITE_PLUGIN_DOCKER_RUN_VOLUMES_0="/host:/container"
   export BUILDKITE_PLUGIN_DOCKER_RUN_VOLUMES_1="/src:/app/src"
 
-  run bash -c "source $PLUGIN_DIR/lib/shared.bash; plugin_read_list 'BUILDKITE_PLUGIN_DOCKER_RUN_VOLUMES'"
+  run bash -c "source $PLUGIN_DIR/lib/shared.bash; plugin_read_list_into_result 'BUILDKITE_PLUGIN_DOCKER_RUN_VOLUMES'; printf '%s\n' \"\${result[@]}\""
 
   [[ $status -eq 0 ]]
   [[ "$output" == *"/host:/container"* ]]
