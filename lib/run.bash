@@ -48,27 +48,29 @@ if [[ "${BUILDKITE_PLUGIN_DOCKER_RUN_ENTRYPOINT+set}" == "set" ]]; then
   CREATE_ARGS+=(--entrypoint "$entrypoint")
 fi
 
-mapfile -t ENVS < <(plugin_read_list "BUILDKITE_PLUGIN_DOCKER_RUN_ENVIRONMENT")
-for e in "${ENVS[@]}"; do
-  CREATE_ARGS+=(-e "$e")
-done
+if plugin_read_list_into_result "BUILDKITE_PLUGIN_DOCKER_RUN_ENVIRONMENT"; then
+  for e in "${result[@]}"; do
+    CREATE_ARGS+=(-e "$e")
+  done
+fi
 
-mapfile -t VOLUMES < <(plugin_read_list "BUILDKITE_PLUGIN_DOCKER_RUN_VOLUMES")
-for v in "${VOLUMES[@]}"; do
-  if [[ "$v" == *:* ]]; then
-    host="${v%%:*}"
-    rest="${v#*:}"
-    # Only `.` and `./…` are relative paths. A bare leading dot is part of the
-    # filename (`.env`, `.git`), so treating it as relative mounted `<pwd>env`.
-    if [[ "$host" == "." ]]; then
-      host="$(pwd)"
-    elif [[ "$host" == ./* ]]; then
-      host="$(pwd)/${host#./}"
+if plugin_read_list_into_result "BUILDKITE_PLUGIN_DOCKER_RUN_VOLUMES"; then
+  for v in "${result[@]}"; do
+    if [[ "$v" == *:* ]]; then
+      host="${v%%:*}"
+      rest="${v#*:}"
+      # Only `.` and `./…` are relative paths. A bare leading dot is part of the
+      # filename (`.env`, `.git`), so treating it as relative mounted `<pwd>env`.
+      if [[ "$host" == "." ]]; then
+        host="$(pwd)"
+      elif [[ "$host" == ./* ]]; then
+        host="$(pwd)/${host#./}"
+      fi
+      v="${host}:${rest}"
     fi
-    v="${host}:${rest}"
-  fi
-  CREATE_ARGS+=(-v "$v")
-done
+    CREATE_ARGS+=(-v "$v")
+  done
+fi
 
 if [[ "${BUILDKITE_PLUGIN_DOCKER_RUN_PROPAGATE_SSH_AGENT:-false}" == "true" ]]; then
   if [[ -n "${SSH_AUTH_SOCK:-}" ]]; then
@@ -136,7 +138,10 @@ if [[ -n "${BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND:-}" && -z "${BUILDKITE_PLUGIN_DO
   echo "+++ Error: The command option must be an array, not a string. Use command: ['arg1', 'arg2']."
   exit 1
 fi
-mapfile -t CMD_ITEMS < <(plugin_read_list "BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND")
+CMD_ITEMS=()
+if plugin_read_list_into_result "BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND"; then
+  CMD_ITEMS=("${result[@]}")
+fi
 has_plugin_commands=false
 [[ ${#CMD_ITEMS[@]} -gt 0 ]] && has_plugin_commands=true
 
@@ -163,7 +168,8 @@ shell_explicitly_set=false
 if [[ "${BUILDKITE_PLUGIN_DOCKER_RUN_SHELL:-}" =~ ^(false|off|0)$ ]]; then
   shell_enabled=false
 elif [[ -n "${BUILDKITE_PLUGIN_DOCKER_RUN_SHELL_0:-}" ]]; then
-  mapfile -t SHELL_ARGS < <(plugin_read_list "BUILDKITE_PLUGIN_DOCKER_RUN_SHELL")
+  plugin_read_list_into_result "BUILDKITE_PLUGIN_DOCKER_RUN_SHELL"
+  SHELL_ARGS=("${result[@]}")
   shell_explicitly_set=true
 elif [[ -n "${BUILDKITE_PLUGIN_DOCKER_RUN_SHELL:-}" ]]; then
   echo "+++ Error: The shell option must be an array or false, not a string."
