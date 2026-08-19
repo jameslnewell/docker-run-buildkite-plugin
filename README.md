@@ -36,6 +36,23 @@ steps:
             - "apt-get update && apt-get install -y curl"
 ```
 
+A single array item may span multiple lines, so a whole script can be handed to a shell. Name the shell with the `shell` option and the script is the only thing left in `command`:
+
+```yaml
+steps:
+  - plugins:
+      - jameslnewell/docker-run#v0.14.0:
+          image: hashicorp/terraform:1.15
+          shell: ["/bin/sh", "-ec"]
+          command:
+            - |
+              cd terraform/production
+              terraform init
+              terraform plan
+```
+
+Naming the shell inside `command` works too — `command: ["/bin/sh", "-ec", "<script>"]` — but the `shell` option is what the official `docker` plugin uses, and it keeps the two concerns apart.
+
 Keep the container's `node_modules` out of the mounted checkout with an anonymous volume:
 
 ```yaml
@@ -121,10 +138,10 @@ steps:
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `image` | string | — | **Required.** Docker image to run. |
-| `command` | array | — | Argv passed as the container CMD, with no shell wrapper. Each array item is one token. Cannot be combined with the step's `command` — except under `hook: pre-command` or `hook: post-command`, where the step's command is not the plugin's to run. |
-| `shell` | array or boolean | `["/bin/sh", "-e", "-c"]` | Shell used to wrap the step's command. Set to `false` to pass the command through unwrapped. Has no effect when the plugin's `command` option is used. |
+| `command` | array | — | Argv passed as the container CMD. Each array item is one token, and an item may span multiple lines. Not wrapped in a shell unless `shell` names one. Cannot be combined with the step's `command` — except under `hook: pre-command` or `hook: post-command`, where the step's command is not the plugin's to run. |
+| `shell` | array or boolean | `["/bin/sh", "-e", "-c"]` for the step's command; none for the plugin's `command` | Shell to wrap the command in. Setting it explicitly wraps the plugin's `command` too, which is how a multi-line script is run. Set to `false` to pass the step's command through unwrapped. |
 | `workdir` | string | `/workdir` when `mount-checkout` is enabled, otherwise the image's | Working directory inside the container. |
-| `entrypoint` | string | — | Override the image's `ENTRYPOINT`. Any value — including `""` — also suppresses shell wrapping, matching the official `docker` plugin. Use `""` to clear an image's entrypoint while passing `command` args directly. |
+| `entrypoint` | string | — | Override the image's `ENTRYPOINT`. Any value — including `""` — suppresses the *default* shell wrapping; setting `shell` explicitly turns it back on. Matches the official `docker` plugin. Use `""` to clear an image's entrypoint while passing `command` args directly. |
 | `mount-checkout` | boolean | `true` | Mount the agent checkout directory at the working directory inside the container. |
 | `environment` | array | — | Environment variables as `KEY` (propagated from the agent) or `KEY=VALUE`. |
 | `volumes` | array | — | Volume mounts as `host:container`, or a bare container path for an anonymous volume. Host paths of `.` or beginning with `./` are resolved against `pwd`, so `.:/app` mounts the checkout. Every other host path — including dotfiles like `.env` and named volumes — is passed to Docker unchanged. |
@@ -142,7 +159,11 @@ steps:
 Under the default `hook: command`, the container's command comes from either the step or the plugin, never both:
 
 - **Step command** — `BUILDKITE_COMMAND` is wrapped in `shell` (`/bin/sh -e -c` by default) and passed as the container CMD. This is what most steps want, because it supports multi-line scripts, pipes and `&&`.
-- **Plugin `command`** — the array is passed as argv directly, with no shell. Use it for steps that have no command of their own.
+- **Plugin `command`** — the array is passed as argv. There is no shell unless `shell` names one, in which case the shell is prepended and the array becomes its arguments. Use it for steps that have no command of their own.
+
+Shell wrapping resolves the same way as the official `docker` plugin: off unless something turns it on. A step command turns it on; so does naming a `shell`. An `entrypoint` turns it back off, and an explicit `shell` overrides that in turn.
+
+Setting both `entrypoint` and `shell` composes rather than conflicts, because Docker runs the entrypoint with the container's arguments appended to it. `entrypoint: ""` clears the image's entrypoint so the shell runs directly, and a wrapper entrypoint that execs its arguments — `tini`, `dumb-init`, `env`, `gosu` — runs the shell in turn. An entrypoint that does *not* exec its arguments will instead receive the shell's path as an argument of its own, which is rarely what you want.
 
 The plugin fails the step, rather than silently picking one, when the configuration is ambiguous:
 

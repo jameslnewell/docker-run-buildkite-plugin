@@ -48,27 +48,29 @@ if [[ "${BUILDKITE_PLUGIN_DOCKER_RUN_ENTRYPOINT+set}" == "set" ]]; then
   CREATE_ARGS+=(--entrypoint "$entrypoint")
 fi
 
-mapfile -t ENVS < <(plugin_read_list "BUILDKITE_PLUGIN_DOCKER_RUN_ENVIRONMENT")
-for e in "${ENVS[@]}"; do
-  CREATE_ARGS+=(-e "$e")
-done
+if plugin_read_list_into_result "BUILDKITE_PLUGIN_DOCKER_RUN_ENVIRONMENT"; then
+  for e in "${result[@]}"; do
+    CREATE_ARGS+=(-e "$e")
+  done
+fi
 
-mapfile -t VOLUMES < <(plugin_read_list "BUILDKITE_PLUGIN_DOCKER_RUN_VOLUMES")
-for v in "${VOLUMES[@]}"; do
-  if [[ "$v" == *:* ]]; then
-    host="${v%%:*}"
-    rest="${v#*:}"
-    # Only `.` and `./…` are relative paths. A bare leading dot is part of the
-    # filename (`.env`, `.git`), so treating it as relative mounted `<pwd>env`.
-    if [[ "$host" == "." ]]; then
-      host="$(pwd)"
-    elif [[ "$host" == ./* ]]; then
-      host="$(pwd)/${host#./}"
+if plugin_read_list_into_result "BUILDKITE_PLUGIN_DOCKER_RUN_VOLUMES"; then
+  for v in "${result[@]}"; do
+    if [[ "$v" == *:* ]]; then
+      host="${v%%:*}"
+      rest="${v#*:}"
+      # Only `.` and `./…` are relative paths. A bare leading dot is part of the
+      # filename (`.env`, `.git`), so treating it as relative mounted `<pwd>env`.
+      if [[ "$host" == "." ]]; then
+        host="$(pwd)"
+      elif [[ "$host" == ./* ]]; then
+        host="$(pwd)/${host#./}"
+      fi
+      v="${host}:${rest}"
     fi
-    v="${host}:${rest}"
-  fi
-  CREATE_ARGS+=(-v "$v")
-done
+    CREATE_ARGS+=(-v "$v")
+  done
+fi
 
 if [[ "${BUILDKITE_PLUGIN_DOCKER_RUN_PROPAGATE_SSH_AGENT:-false}" == "true" ]]; then
   if [[ -n "${SSH_AUTH_SOCK:-}" ]]; then
@@ -96,11 +98,18 @@ if [[ "${BUILDKITE_PLUGIN_DOCKER_RUN_PROPAGATE_AWS:-false}" == "true" ]]; then
 fi
 
 if [[ "${BUILDKITE_PLUGIN_DOCKER_RUN_PROPAGATE_BUILDKITE_ENVIRONMENT:-false}" == "true" ]]; then
-  while IFS='=' read -r key _; do
+  # `compgen -e`, not `env`: `env` prints NAME=VALUE records separated by
+  # newlines, so a variable whose value contains a newline (a commit message,
+  # a multi-line BUILDKITE_COMMAND) makes each of its continuation lines look
+  # like another record — and a line such as `BUILDKITE_FOO=1` inside a value
+  # would be forwarded as if `BUILDKITE_FOO` were a real variable. `compgen -e`
+  # lists the names of exported variables only, and a name can never contain a
+  # newline, so one line is always exactly one name.
+  while read -r key; do
     if [[ "$key" == "CI" || "$key" == "BUILDKITE" || "$key" == BUILDKITE_* ]]; then
       CREATE_ARGS+=(-e "$key")
     fi
-  done < <(env)
+  done < <(compgen -e)
 fi
 
 if [[ "${BUILDKITE_PLUGIN_DOCKER_RUN_PROPAGATE_BUILDKITE_AGENT:-false}" == "true" ]]; then
@@ -136,7 +145,10 @@ if [[ -n "${BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND:-}" && -z "${BUILDKITE_PLUGIN_DO
   echo "+++ Error: The command option must be an array, not a string. Use command: ['arg1', 'arg2']."
   exit 1
 fi
-mapfile -t CMD_ITEMS < <(plugin_read_list "BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND")
+CMD_ITEMS=()
+if plugin_read_list_into_result "BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND"; then
+  CMD_ITEMS=("${result[@]}")
+fi
 has_plugin_commands=false
 [[ ${#CMD_ITEMS[@]} -gt 0 ]] && has_plugin_commands=true
 
@@ -156,43 +168,53 @@ if [[ "$HOOK" == "command" ]]; then
   fi
 fi
 
-# Determine shell (only applies to step commands)
+# Shell wrapping resolves the same way as the official buildkite docker plugin:
+# off unless something turns it on. The step having a command of its own turns it
+# on, because BUILDKITE_COMMAND is a script that needs a shell to interpret it.
+# Naming a shell explicitly also turns it on — and that applies to the plugin's
+# own `command` too, which is how a multi-line script is handed to it.
 SHELL_ARGS=()
-shell_enabled=true
-shell_explicitly_set=false
+shell_disabled=true
+[[ "$has_step_commands" == "true" ]] && shell_disabled=false
+
+# Any entrypoint (even "") turns wrapping back off: the entrypoint now decides how
+# the remaining arguments are interpreted. An explicitly named shell below can
+# still turn it back on — the official plugin resolves the two in that order.
+[[ "${BUILDKITE_PLUGIN_DOCKER_RUN_ENTRYPOINT+set}" == "set" ]] && shell_disabled=true
+
 if [[ "${BUILDKITE_PLUGIN_DOCKER_RUN_SHELL:-}" =~ ^(false|off|0)$ ]]; then
-  shell_enabled=false
+  shell_disabled=true
 elif [[ -n "${BUILDKITE_PLUGIN_DOCKER_RUN_SHELL_0:-}" ]]; then
-  mapfile -t SHELL_ARGS < <(plugin_read_list "BUILDKITE_PLUGIN_DOCKER_RUN_SHELL")
-  shell_explicitly_set=true
+  plugin_read_list_into_result "BUILDKITE_PLUGIN_DOCKER_RUN_SHELL"
+  SHELL_ARGS=("${result[@]}")
+  shell_disabled=false
 elif [[ -n "${BUILDKITE_PLUGIN_DOCKER_RUN_SHELL:-}" ]]; then
   echo "+++ Error: The shell option must be an array or false, not a string."
   exit 1
-else
-  SHELL_ARGS=("/bin/sh" "-e" "-c")
 fi
 
-# Any entrypoint (even "") suppresses shell wrapping — matches official buildkite docker plugin.
-[[ "${BUILDKITE_PLUGIN_DOCKER_RUN_ENTRYPOINT+set}" == "set" ]] && shell_enabled=false
-
-# Error if shell was explicitly set as an array but entrypoint suppresses it.
-if [[ "${BUILDKITE_PLUGIN_DOCKER_RUN_ENTRYPOINT+set}" == "set" && "$shell_explicitly_set" == "true" ]]; then
-  echo "+++ Error: The shell option has no effect when entrypoint is set — entrypoint suppresses shell wrapping."
-  exit 1
+if [[ "$shell_disabled" == "false" && ${#SHELL_ARGS[@]} -eq 0 ]]; then
+  SHELL_ARGS=("/bin/sh" "-e" "-c")
 fi
 
 declare -a DOCKER_ARGS=(create --name "$CONTAINER_NAME")
 DOCKER_ARGS+=("${CREATE_ARGS[@]}")
 DOCKER_ARGS+=("$IMAGE")
 
-if [[ "$has_step_commands" == "true" ]]; then
-  if [[ "$shell_enabled" == "true" ]]; then
-    DOCKER_ARGS+=("${SHELL_ARGS[@]}" "$BUILDKITE_COMMAND")
-  else
-    DOCKER_ARGS+=("$BUILDKITE_COMMAND")
+# Only prepend the shell when there is something for it to run. A shell with no
+# script operand is worse than no shell at all — `sh -c` exits with "-c requires
+# an argument" — and with neither a step command nor a plugin command the image's
+# own CMD is what should run. The official plugin emits the bare shell here and
+# the container fails; this is a deliberate divergence.
+if [[ "$has_step_commands" == "true" || "$has_plugin_commands" == "true" ]]; then
+  if [[ "$shell_disabled" == "false" ]]; then
+    DOCKER_ARGS+=("${SHELL_ARGS[@]}")
   fi
+fi
+
+if [[ "$has_step_commands" == "true" ]]; then
+  DOCKER_ARGS+=("$BUILDKITE_COMMAND")
 elif [[ "$has_plugin_commands" == "true" ]]; then
-  # Plugin commands are passed directly as docker CMD args — no shell wrapper
   DOCKER_ARGS+=("${CMD_ITEMS[@]}")
 fi
 

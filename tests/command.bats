@@ -22,38 +22,52 @@ teardown() {
   unstub chmod 2>/dev/null || true
 }
 
-@test "plugin_read_list with scalar value" {
+@test "plugin_read_list_into_result with scalar value" {
   export MY_VAR="single-value"
-  mapfile -t result < <(plugin_read_list "MY_VAR")
+  plugin_read_list_into_result "MY_VAR"
+  [[ "${#result[@]}" -eq 1 ]]
   [[ "${result[0]}" == "single-value" ]]
 }
 
-@test "plugin_read_list with indexed array" {
+@test "plugin_read_list_into_result with indexed array" {
   export MY_VAR_0="first"
   export MY_VAR_1="second"
   export MY_VAR_2="third"
-  result=$(plugin_read_list "MY_VAR")
-  [[ "$result" == $'first\nsecond\nthird' ]]
-}
-
-@test "plugin_read_list with indexed array reads all items under set -e" {
-  # Regression: (( i++ )) returns exit code 1 when i=0, which set -e in a
-  # process substitution subshell would turn into an early exit, silently
-  # dropping all items after index 0.
-  export MY_VAR_0="first"
-  export MY_VAR_1="second"
-  export MY_VAR_2="third"
-  mapfile -t result < <(set -e; plugin_read_list "MY_VAR")
+  plugin_read_list_into_result "MY_VAR"
   [[ "${#result[@]}" -eq 3 ]]
   [[ "${result[0]}" == "first" ]]
   [[ "${result[1]}" == "second" ]]
   [[ "${result[2]}" == "third" ]]
 }
 
-@test "plugin_read_list with empty result" {
+@test "plugin_read_list_into_result with indexed array reads all items under set -e" {
+  # Regression: (( i++ )) returns exit code 1 when i=0, which set -e would turn
+  # into an early return, silently dropping all items after index 0.
+  export MY_VAR_0="first"
+  export MY_VAR_1="second"
+  export MY_VAR_2="third"
+  run bash -c "set -e; source $PLUGIN_DIR/lib/shared.bash; plugin_read_list_into_result 'MY_VAR'; printf '%s\n' \"\${#result[@]}\""
+  assert_success
+  assert_output "3"
+}
+
+@test "plugin_read_list_into_result keeps a multi-line item as one entry" {
+  # Regression: the list used to be printed newline-delimited and re-read with
+  # mapfile -t, which split a multi-line item into one entry per line.
+  export MY_VAR_0="/bin/sh"
+  export MY_VAR_1="-ec"
+  export MY_VAR_2=$'cd terraform\nterraform init'
+  plugin_read_list_into_result "MY_VAR"
+  [[ "${#result[@]}" -eq 3 ]]
+  [[ "${result[2]}" == $'cd terraform\nterraform init' ]]
+}
+
+@test "plugin_read_list_into_result with empty result" {
   unset MY_VAR
   unset MY_VAR_0
-  mapfile -t result < <(plugin_read_list "MY_VAR")
+  run plugin_read_list_into_result "MY_VAR"
+  assert_failure
+  plugin_read_list_into_result "MY_VAR" || true
   [[ "${#result[@]}" == "0" ]]
 }
 
@@ -151,6 +165,25 @@ teardown() {
   assert_success
 }
 
+@test "Multi-line plugin command item stays a single docker arg" {
+  # Regression: a `command:` item holding a whole shell script used to be split
+  # into one argv entry per line, so `sh -c` ran only the first line (typically
+  # a `cd`) and bound the rest to $0, $1, … — silently, and with exit status 0.
+  unset BUILDKITE_COMMAND
+  export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_0="/bin/sh"
+  export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_1="-ec"
+  export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_2=$'cd terraform\nterraform init'
+
+  stub docker \
+    "pull ubuntu:24.04 : true" \
+    "create --name docker-run-buildkite-plugin-test-job-id --tty ubuntu:24.04 /bin/sh -ec \$'cd terraform\nterraform init' : true" \
+    "start --attach docker-run-buildkite-plugin-test-job-id : true"
+
+  run "$PLUGIN_DIR/hooks/command"
+
+  assert_success
+}
+
 @test "Step command with shell false passed directly" {
   export BUILDKITE_PLUGIN_DOCKER_RUN_SHELL="false"
   unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND
@@ -225,20 +258,104 @@ teardown() {
   unset BUILDKITE_COMMAND
 }
 
-@test "Shell array with entrypoint errors" {
-  export BUILDKITE_PLUGIN_DOCKER_RUN_ENTRYPOINT="/bin/sh"
+@test "Explicit shell array applies alongside a cleared entrypoint" {
+  # An entrypoint suppresses the *default* shell, but naming one explicitly turns
+  # wrapping back on — the official docker plugin resolves the two in that order.
+  # Clearing the image's ENTRYPOINT and then asking for a shell is the common
+  # reason to set both.
+  export BUILDKITE_PLUGIN_DOCKER_RUN_ENTRYPOINT=""
   export BUILDKITE_PLUGIN_DOCKER_RUN_SHELL_0="/bin/bash"
   export BUILDKITE_PLUGIN_DOCKER_RUN_SHELL_1="-e"
   export BUILDKITE_PLUGIN_DOCKER_RUN_SHELL_2="-c"
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_0
   export BUILDKITE_COMMAND="make test"
 
   stub docker \
-    "pull ubuntu:24.04 : true"
+    "pull ubuntu:24.04 : true" \
+    "create --name docker-run-buildkite-plugin-test-job-id --tty --entrypoint \"\" ubuntu:24.04 /bin/bash -e -c \"make test\" : true" \
+    "start --attach docker-run-buildkite-plugin-test-job-id : true"
 
   run "$PLUGIN_DIR/hooks/command"
 
-  assert_failure
-  assert_output --partial "Error:"
+  assert_success
+  unset BUILDKITE_COMMAND
+}
+
+@test "Explicit shell array applies alongside a wrapper entrypoint" {
+  # Docker concatenates ENTRYPOINT and CMD, so a wrapper entrypoint that execs
+  # its arguments (tini, dumb-init, env, gosu) composes with a shell. This
+  # combination used to fail the step outright.
+  export BUILDKITE_PLUGIN_DOCKER_RUN_ENTRYPOINT="/usr/bin/env"
+  export BUILDKITE_PLUGIN_DOCKER_RUN_SHELL_0="/bin/bash"
+  export BUILDKITE_PLUGIN_DOCKER_RUN_SHELL_1="-e"
+  export BUILDKITE_PLUGIN_DOCKER_RUN_SHELL_2="-c"
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_0
+  export BUILDKITE_COMMAND="make test"
+
+  stub docker \
+    "pull ubuntu:24.04 : true" \
+    "create --name docker-run-buildkite-plugin-test-job-id --tty --entrypoint /usr/bin/env ubuntu:24.04 /bin/bash -e -c \"make test\" : true" \
+    "start --attach docker-run-buildkite-plugin-test-job-id : true"
+
+  run "$PLUGIN_DIR/hooks/command"
+
+  assert_success
+  unset BUILDKITE_COMMAND
+}
+
+@test "Explicit shell array wraps the plugin command" {
+  unset BUILDKITE_COMMAND
+  export BUILDKITE_PLUGIN_DOCKER_RUN_SHELL_0="/bin/sh"
+  export BUILDKITE_PLUGIN_DOCKER_RUN_SHELL_1="-e"
+  export BUILDKITE_PLUGIN_DOCKER_RUN_SHELL_2="-c"
+  export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_0=$'cd terraform\nterraform init'
+
+  stub docker \
+    "pull ubuntu:24.04 : true" \
+    "create --name docker-run-buildkite-plugin-test-job-id --tty ubuntu:24.04 /bin/sh -e -c \$'cd terraform\nterraform init' : true" \
+    "start --attach docker-run-buildkite-plugin-test-job-id : true"
+
+  run "$PLUGIN_DIR/hooks/command"
+
+  assert_success
+}
+
+@test "Plugin command without a shell stays bare argv" {
+  unset BUILDKITE_COMMAND
+  export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_0="npx"
+  export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_1="prisma"
+
+  stub docker \
+    "pull ubuntu:24.04 : true" \
+    "create --name docker-run-buildkite-plugin-test-job-id --tty ubuntu:24.04 npx prisma : true" \
+    "start --attach docker-run-buildkite-plugin-test-job-id : true"
+
+  run "$PLUGIN_DIR/hooks/command"
+
+  assert_success
+}
+
+@test "Explicit shell is not added when there is no command to run" {
+  # A shell with no script operand exits with "-c requires an argument", so the
+  # shell must never be prepended with nothing to wrap — the image's own CMD is
+  # what should run. The official plugin emits the bare shell here.
+  unset BUILDKITE_COMMAND
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_0
+  export BUILDKITE_PLUGIN_DOCKER_RUN_SHELL_0="/bin/sh"
+  export BUILDKITE_PLUGIN_DOCKER_RUN_SHELL_1="-e"
+  export BUILDKITE_PLUGIN_DOCKER_RUN_SHELL_2="-c"
+
+  stub docker \
+    "pull ubuntu:24.04 : true" \
+    "create --name docker-run-buildkite-plugin-test-job-id --tty ubuntu:24.04 : true" \
+    "start --attach docker-run-buildkite-plugin-test-job-id : true"
+
+  run "$PLUGIN_DIR/hooks/command"
+
+  assert_success
 }
 
 @test "Shell as string errors" {
@@ -258,7 +375,7 @@ teardown() {
   export BUILDKITE_PLUGIN_DOCKER_RUN_ENVIRONMENT_0="DATABASE_URL=postgres://localhost"
   export BUILDKITE_PLUGIN_DOCKER_RUN_ENVIRONMENT_1="NODE_ENV=test"
 
-  run bash -c "source $PLUGIN_DIR/lib/shared.bash; plugin_read_list 'BUILDKITE_PLUGIN_DOCKER_RUN_ENVIRONMENT'"
+  run bash -c "source $PLUGIN_DIR/lib/shared.bash; plugin_read_list_into_result 'BUILDKITE_PLUGIN_DOCKER_RUN_ENVIRONMENT'; printf '%s\n' \"\${result[@]}\""
 
   [[ $status -eq 0 ]]
   [[ "$output" == *"DATABASE_URL=postgres://localhost"* ]]
@@ -269,7 +386,7 @@ teardown() {
   export BUILDKITE_PLUGIN_DOCKER_RUN_VOLUMES_0="/host:/container"
   export BUILDKITE_PLUGIN_DOCKER_RUN_VOLUMES_1="/src:/app/src"
 
-  run bash -c "source $PLUGIN_DIR/lib/shared.bash; plugin_read_list 'BUILDKITE_PLUGIN_DOCKER_RUN_VOLUMES'"
+  run bash -c "source $PLUGIN_DIR/lib/shared.bash; plugin_read_list_into_result 'BUILDKITE_PLUGIN_DOCKER_RUN_VOLUMES'; printf '%s\n' \"\${result[@]}\""
 
   [[ $status -eq 0 ]]
   [[ "$output" == *"/host:/container"* ]]
@@ -413,6 +530,26 @@ teardown() {
   assert_output --partial "-e CI"
   assert_output --partial "-e BUILDKITE "
   assert_output --partial "-e BUILDKITE_BRANCH"
+}
+
+@test "propagate-buildkite-environment ignores lines inside a multi-line value" {
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_0
+  export BUILDKITE_PLUGIN_DOCKER_RUN_PROPAGATE_BUILDKITE_ENVIRONMENT="true"
+  # A real commit message spans lines; reading `env` line-by-line would take the
+  # second line for another NAME=VALUE record and forward BUILDKITE_NOT_A_VAR.
+  export BUILDKITE_MESSAGE=$'fix: something\nBUILDKITE_NOT_A_VAR=surprise'
+
+  stub docker \
+    "pull ubuntu:24.04 : true" \
+    ":: true" \
+    "start --attach docker-run-buildkite-plugin-test-job-id : true"
+
+  run bash -c "${PLUGIN_DIR}/hooks/command 2>&1"
+
+  assert_success
+  assert_output --partial "-e BUILDKITE_MESSAGE"
+  refute_output --partial "BUILDKITE_NOT_A_VAR"
 }
 
 @test "propagate-docker mounts default socket when DOCKER_HOST is unset" {
