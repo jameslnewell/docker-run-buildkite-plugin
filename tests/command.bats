@@ -258,20 +258,104 @@ teardown() {
   unset BUILDKITE_COMMAND
 }
 
-@test "Shell array with entrypoint errors" {
-  export BUILDKITE_PLUGIN_DOCKER_RUN_ENTRYPOINT="/bin/sh"
+@test "Explicit shell array applies alongside a cleared entrypoint" {
+  # An entrypoint suppresses the *default* shell, but naming one explicitly turns
+  # wrapping back on — the official docker plugin resolves the two in that order.
+  # Clearing the image's ENTRYPOINT and then asking for a shell is the common
+  # reason to set both.
+  export BUILDKITE_PLUGIN_DOCKER_RUN_ENTRYPOINT=""
   export BUILDKITE_PLUGIN_DOCKER_RUN_SHELL_0="/bin/bash"
   export BUILDKITE_PLUGIN_DOCKER_RUN_SHELL_1="-e"
   export BUILDKITE_PLUGIN_DOCKER_RUN_SHELL_2="-c"
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_0
   export BUILDKITE_COMMAND="make test"
 
   stub docker \
-    "pull ubuntu:24.04 : true"
+    "pull ubuntu:24.04 : true" \
+    "create --name docker-run-buildkite-plugin-test-job-id --tty --entrypoint \"\" ubuntu:24.04 /bin/bash -e -c \"make test\" : true" \
+    "start --attach docker-run-buildkite-plugin-test-job-id : true"
 
   run "$PLUGIN_DIR/hooks/command"
 
-  assert_failure
-  assert_output --partial "Error:"
+  assert_success
+  unset BUILDKITE_COMMAND
+}
+
+@test "Explicit shell array applies alongside a wrapper entrypoint" {
+  # Docker concatenates ENTRYPOINT and CMD, so a wrapper entrypoint that execs
+  # its arguments (tini, dumb-init, env, gosu) composes with a shell. This
+  # combination used to fail the step outright.
+  export BUILDKITE_PLUGIN_DOCKER_RUN_ENTRYPOINT="/usr/bin/env"
+  export BUILDKITE_PLUGIN_DOCKER_RUN_SHELL_0="/bin/bash"
+  export BUILDKITE_PLUGIN_DOCKER_RUN_SHELL_1="-e"
+  export BUILDKITE_PLUGIN_DOCKER_RUN_SHELL_2="-c"
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_0
+  export BUILDKITE_COMMAND="make test"
+
+  stub docker \
+    "pull ubuntu:24.04 : true" \
+    "create --name docker-run-buildkite-plugin-test-job-id --tty --entrypoint /usr/bin/env ubuntu:24.04 /bin/bash -e -c \"make test\" : true" \
+    "start --attach docker-run-buildkite-plugin-test-job-id : true"
+
+  run "$PLUGIN_DIR/hooks/command"
+
+  assert_success
+  unset BUILDKITE_COMMAND
+}
+
+@test "Explicit shell array wraps the plugin command" {
+  unset BUILDKITE_COMMAND
+  export BUILDKITE_PLUGIN_DOCKER_RUN_SHELL_0="/bin/sh"
+  export BUILDKITE_PLUGIN_DOCKER_RUN_SHELL_1="-e"
+  export BUILDKITE_PLUGIN_DOCKER_RUN_SHELL_2="-c"
+  export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_0=$'cd terraform\nterraform init'
+
+  stub docker \
+    "pull ubuntu:24.04 : true" \
+    "create --name docker-run-buildkite-plugin-test-job-id --tty ubuntu:24.04 /bin/sh -e -c \$'cd terraform\nterraform init' : true" \
+    "start --attach docker-run-buildkite-plugin-test-job-id : true"
+
+  run "$PLUGIN_DIR/hooks/command"
+
+  assert_success
+}
+
+@test "Plugin command without a shell stays bare argv" {
+  unset BUILDKITE_COMMAND
+  export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_0="npx"
+  export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_1="prisma"
+
+  stub docker \
+    "pull ubuntu:24.04 : true" \
+    "create --name docker-run-buildkite-plugin-test-job-id --tty ubuntu:24.04 npx prisma : true" \
+    "start --attach docker-run-buildkite-plugin-test-job-id : true"
+
+  run "$PLUGIN_DIR/hooks/command"
+
+  assert_success
+}
+
+@test "Explicit shell is not added when there is no command to run" {
+  # A shell with no script operand exits with "-c requires an argument", so the
+  # shell must never be prepended with nothing to wrap — the image's own CMD is
+  # what should run. The official plugin emits the bare shell here.
+  unset BUILDKITE_COMMAND
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_0
+  export BUILDKITE_PLUGIN_DOCKER_RUN_SHELL_0="/bin/sh"
+  export BUILDKITE_PLUGIN_DOCKER_RUN_SHELL_1="-e"
+  export BUILDKITE_PLUGIN_DOCKER_RUN_SHELL_2="-c"
+
+  stub docker \
+    "pull ubuntu:24.04 : true" \
+    "create --name docker-run-buildkite-plugin-test-job-id --tty ubuntu:24.04 : true" \
+    "start --attach docker-run-buildkite-plugin-test-job-id : true"
+
+  run "$PLUGIN_DIR/hooks/command"
+
+  assert_success
 }
 
 @test "Shell as string errors" {
