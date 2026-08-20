@@ -60,8 +60,25 @@ PATH="$(brew --prefix)/bin:$PATH" BATS_LIB_PATH="$(brew --prefix)/lib" bats test
 Integration tests (requires Docker):
 
 ```bash
-bats tests/integration.bats
+PATH="$(brew --prefix)/bin:$PATH" BATS_LIB_PATH="$(brew --prefix)/lib" bats tests/integration.bats
 ```
+
+> **Keep the `PATH` prefix on macOS — it is not just for finding bats.** Under the
+> system bash (3.2), bats does not abort a test at the first failed assertion: only
+> the last command in the test body decides the result, so a test can report `ok`
+> while an assertion in the middle of it failed. The same file, same bats, on bash
+> 5.2 fails as it should. `buildkite/plugin-tester` ships its own bash and is
+> unaffected.
+
+### What runs where
+
+`buildkite/plugin-tester` has no `docker` CLI, so `tests/integration.bats` skips in
+it — which is why running only that image is not enough to know the suite passed.
+
+CI covers both: `.github/workflows/test.yml` runs the suite in `plugin-tester`
+(keeping that path honest, since it is what this guide tells you to use locally)
+*and* runs it natively on the runner, where a `docker` CLI and daemon exist, so
+every test executes. That second job fails if any test reports a skip.
 
 ## Releasing
 
