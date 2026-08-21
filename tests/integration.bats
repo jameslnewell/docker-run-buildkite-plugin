@@ -21,7 +21,12 @@ skip_if_no_docker() {
 @test "integration: runs simple command in container" {
   skip_if_no_docker
 
-  export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND="echo success"
+  # `command` is an array option — as a string the hook rejects it outright with
+  # "The command option must be an array". These tests were written against an
+  # older API and have been failing ever since, unnoticed, because they only ever
+  # ran somewhere without a docker CLI.
+  export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_0="echo"
+  export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_1="success"
 
   run bash "$PLUGIN_PATH/hooks/command"
 
@@ -33,7 +38,7 @@ skip_if_no_docker() {
   skip_if_no_docker
 
   export BUILDKITE_PLUGIN_DOCKER_RUN_WORKDIR="/tmp"
-  export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND="pwd"
+  export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_0="pwd"
 
   run bash "$PLUGIN_PATH/hooks/command"
 
@@ -44,8 +49,12 @@ skip_if_no_docker() {
 @test "integration: passes environment variables" {
   skip_if_no_docker
 
-  export BUILDKITE_PLUGIN_DOCKER_RUN_ENV_0="TEST_VAR=hello"
-  export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND="sh -c 'echo \$TEST_VAR'"
+  # ENVIRONMENT, not ENV: the option is `environment`, so the variable this test
+  # used to set was one no hook has ever read.
+  export BUILDKITE_PLUGIN_DOCKER_RUN_ENVIRONMENT_0="TEST_VAR=hello"
+  export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_0="sh"
+  export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_1="-c"
+  export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_2='echo $TEST_VAR'
 
   run bash "$PLUGIN_PATH/hooks/command"
 
@@ -55,6 +64,12 @@ skip_if_no_docker() {
 
 @test "integration: cleans up container after execution" {
   skip_if_no_docker
+
+  # Give it something to run. With no command the container falls back to the
+  # image's own CMD — `sh` for busybox — and because the plugin allocates a TTY
+  # that is an interactive shell with nothing on stdin, so the hook blocks forever
+  # and takes the whole suite with it.
+  export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_0="true"
 
   bash "$PLUGIN_PATH/hooks/command" 2>/dev/null || true
   bash "$PLUGIN_PATH/hooks/pre-exit" 2>/dev/null || true
@@ -88,7 +103,10 @@ skip_if_no_docker() {
 @test "integration: handles command failure gracefully" {
   skip_if_no_docker
 
-  export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND="exit 1"
+  # `false` rather than a string "exit 1": the latter was rejected as a non-array
+  # command, so this test passed on the error path instead of on a failing
+  # container, which is the thing it is meant to check.
+  export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_0="false"
 
   run bash "$PLUGIN_PATH/hooks/command"
 
