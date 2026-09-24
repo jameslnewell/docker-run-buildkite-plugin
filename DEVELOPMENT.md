@@ -23,7 +23,9 @@ Options not defined in the Compose spec follow either the Docker CLI's naming or
 | `workdir` | `BUILDKITE_PLUGIN_DOCKER_RUN_WORKDIR` | Working directory in the container |
 | `shell` | `BUILDKITE_PLUGIN_DOCKER_RUN_SHELL` | Shell used to wrap the step's command |
 | `mount-checkout` | `BUILDKITE_PLUGIN_DOCKER_RUN_MOUNT_CHECKOUT` | Mount the agent checkout as the working directory |
-| `propagate-docker` | `BUILDKITE_PLUGIN_DOCKER_RUN_PROPAGATE_DOCKER` | Mount the host Docker socket and config |
+| `propagate-docker-daemon` | `BUILDKITE_PLUGIN_DOCKER_RUN_PROPAGATE_DOCKER_DAEMON` | Give the container access to the host Docker daemon |
+| `propagate-docker-config` | `BUILDKITE_PLUGIN_DOCKER_RUN_PROPAGATE_DOCKER_CONFIG` | Give the container the agent's registry credentials |
+| `propagate-docker` | `BUILDKITE_PLUGIN_DOCKER_RUN_PROPAGATE_DOCKER` | Deprecated alias for both of the above |
 | `propagate-ssh-agent` | `BUILDKITE_PLUGIN_DOCKER_RUN_PROPAGATE_SSH_AGENT` | Forward the host SSH agent and known hosts |
 | `propagate-aws` | `BUILDKITE_PLUGIN_DOCKER_RUN_PROPAGATE_AWS` | Propagate AWS credential and region env vars |
 | `propagate-buildkite-agent` | `BUILDKITE_PLUGIN_DOCKER_RUN_PROPAGATE_BUILDKITE_AGENT` | Mount the Buildkite agent socket and token |

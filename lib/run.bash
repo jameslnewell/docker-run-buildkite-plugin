@@ -4,6 +4,33 @@ IMAGE="${BUILDKITE_PLUGIN_DOCKER_RUN_IMAGE}"
 HOOK="${BUILDKITE_PLUGIN_DOCKER_RUN_HOOK:-command}"
 CONTAINER_NAME="$(plugin_run_name)"
 
+# `propagate-docker` is the deprecated name for both halves at once. Resolve it
+# into the two flags here so the rest of this file only reads the halves.
+propagate_docker_daemon="${BUILDKITE_PLUGIN_DOCKER_RUN_PROPAGATE_DOCKER_DAEMON:-false}"
+propagate_docker_config="${BUILDKITE_PLUGIN_DOCKER_RUN_PROPAGATE_DOCKER_CONFIG:-false}"
+
+if [[ "${BUILDKITE_PLUGIN_DOCKER_RUN_PROPAGATE_DOCKER:-false}" == "true" ]]; then
+  # Asking for both halves and for one of them has no single reading: does
+  # `propagate-docker-daemon: false` turn that half back off, or does the
+  # combined option win? Fail rather than pick, as this plugin already does for
+  # an ambiguous `command` or `shell`. An explicit `propagate-docker: false`
+  # alongside a half has only one reading, so it is left to the warning below.
+  if [[ "${BUILDKITE_PLUGIN_DOCKER_RUN_PROPAGATE_DOCKER_DAEMON+set}" == "set" || "${BUILDKITE_PLUGIN_DOCKER_RUN_PROPAGATE_DOCKER_CONFIG+set}" == "set" ]]; then
+    echo "+++ Error: Cannot specify propagate-docker alongside propagate-docker-daemon or propagate-docker-config."
+    echo "propagate-docker is the deprecated name for both halves at once. Drop it and keep only the halves the step needs."
+    exit 1
+  fi
+  propagate_docker_daemon="true"
+  propagate_docker_config="true"
+fi
+
+# Its own collapsed group, so the notice is a titled row in the log rather than
+# a bare line swallowed into whichever group the agent happened to have open.
+if [[ "${BUILDKITE_PLUGIN_DOCKER_RUN_PROPAGATE_DOCKER+set}" == "set" ]]; then
+  echo "~~~ :warning: The docker-run plugin's propagate-docker option is deprecated"
+  echo "Use propagate-docker-daemon for access to the host docker daemon, propagate-docker-config for the agent's registry credentials, or both. propagate-docker will be removed in a future release."
+fi
+
 # Buildkite treats lines beginning with ---, +++ or ~~~ as log-group headers.
 # The agent *sources* this hook (which sources this file), so `set -x` runs a
 # few shell-nesting levels deep, and bash replicates PS4's first character once
@@ -120,8 +147,7 @@ if [[ "${BUILDKITE_PLUGIN_DOCKER_RUN_PROPAGATE_BUILDKITE_AGENT:-false}" == "true
   CREATE_ARGS+=(-e "BUILDKITE_AGENT_ACCESS_TOKEN")
 fi
 
-if [[ "${BUILDKITE_PLUGIN_DOCKER_RUN_PROPAGATE_DOCKER:-false}" == "true" ]]; then
-  DOCKER_RUN_TMPDIR="$(mktemp -d)"
+if [[ "$propagate_docker_daemon" == "true" ]]; then
   DOCKER_HOST_VALUE="${DOCKER_HOST:-unix:///var/run/docker.sock}"
   if [[ "$DOCKER_HOST_VALUE" == unix://* ]]; then
     DOCKER_SOCKET="${DOCKER_HOST_VALUE#unix://}"
@@ -130,15 +156,23 @@ if [[ "${BUILDKITE_PLUGIN_DOCKER_RUN_PROPAGATE_DOCKER:-false}" == "true" ]]; the
     # TCP daemon — no socket to mount; pass DOCKER_HOST so the container's docker client connects directly
     CREATE_ARGS+=(-e "DOCKER_HOST=${DOCKER_HOST_VALUE}")
   fi
+fi
+
+if [[ "$propagate_docker_config" == "true" ]]; then
   # Copy rather than directly mounting: the original file is owned by the agent user (mode 0600)
   # and may not be readable inside the container without --userns host. A 0644 copy avoids that.
-  DOCKER_CONFIG_DIR="${DOCKER_CONFIG:-${HOME}/.docker}"
+  DOCKER_CONFIG_DIR="${DOCKER_CONFIG:-${HOME:-/var/lib/buildkite-agent}/.docker}"
   if [[ -f "${DOCKER_CONFIG_DIR}/config.json" ]]; then
+    DOCKER_RUN_TMPDIR="$(mktemp -d)"
+    # The marker goes down before anything is copied into the directory, so a
+    # failure partway through still leaves pre-exit something to clean up rather
+    # than stranding a copy of the agent's credentials on the host. A step that
+    # takes the daemon half alone never gets here, and leaves no marker at all.
+    printf '%s\n' "$DOCKER_RUN_TMPDIR" > "/tmp/${CONTAINER_NAME}.tmpdir"
     cp "${DOCKER_CONFIG_DIR}/config.json" "${DOCKER_RUN_TMPDIR}/config.json"
     chmod 0644 "${DOCKER_RUN_TMPDIR}/config.json"
     CREATE_ARGS+=(-v "${DOCKER_RUN_TMPDIR}/config.json:/root/.docker/config.json")
   fi
-  echo "$DOCKER_RUN_TMPDIR" > "/tmp/${CONTAINER_NAME}.tmpdir"
 fi
 
 if [[ -n "${BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND:-}" && -z "${BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_0:-}" ]]; then

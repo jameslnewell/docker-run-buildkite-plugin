@@ -31,9 +31,15 @@ configuration:
     volumes:
       type: array
       description: "Volume mounts as host:container. Relative host paths (starting with .) are resolved against pwd."
+    propagate-docker-daemon:
+      type: boolean
+      description: "Give the container access to the host Docker daemon, enabling Docker-from-Docker without userns:host. Mounts the socket named by DOCKER_HOST (default unix:///var/run/docker.sock); when DOCKER_HOST names a TCP daemon there is no socket to mount, so the variable is passed through instead."
+    propagate-docker-config:
+      type: boolean
+      description: "Give the container the agent's registry credentials, so it can pull and push without logging in first. A readable copy of the agent's Docker config is mounted — the original is never exposed, so the container cannot overwrite the agent's credentials."
     propagate-docker:
       type: boolean
-      description: "Mount the host Docker socket and a readable copy of the Docker config, enabling Docker-from-Docker without userns:host"
+      description: "Deprecated: means propagate-docker-daemon and propagate-docker-config at once. Warns at runtime, and setting it to true alongside either of them is an error. Prefer the two options — a step that wants registry credentials rarely also wants root-equivalent access to the host daemon."
     propagate-ssh-agent:
       type: boolean
       description: "Forward the host SSH agent socket into the container at /run/ssh-agent and set SSH_AUTH_SOCK accordingly. Also mounts the agent's ~/.ssh/known_hosts (when present) at /etc/ssh/ssh_known_hosts so git/ssh trusts known hosts instead of hanging on an interactive host-key prompt."

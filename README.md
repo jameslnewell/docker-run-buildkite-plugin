@@ -17,7 +17,7 @@ Run the step's command inside an image. By default the checkout is mounted at `/
 steps:
   - command: make test
     plugins:
-      - jameslnewell/docker-run#v0.16.0:
+      - jameslnewell/docker-run#v0.18.0:
           image: node:20
           environment:
             - CI=true
@@ -28,7 +28,7 @@ Run a command defined by the plugin instead of the step. Each array item is one 
 ```yaml
 steps:
   - plugins:
-      - jameslnewell/docker-run#v0.16.0:
+      - jameslnewell/docker-run#v0.18.0:
           image: ubuntu:24.04
           command:
             - bash
@@ -41,7 +41,7 @@ A single array item may span multiple lines, so a whole script can be handed to 
 ```yaml
 steps:
   - plugins:
-      - jameslnewell/docker-run#v0.14.0:
+      - jameslnewell/docker-run#v0.18.0:
           image: hashicorp/terraform:1.15
           shell: ["/bin/sh", "-ec"]
           command:
@@ -59,21 +59,33 @@ Keep the container's `node_modules` out of the mounted checkout with an anonymou
 steps:
   - command: npm ci && npm test
     plugins:
-      - jameslnewell/docker-run#v0.16.0:
+      - jameslnewell/docker-run#v0.18.0:
           image: node:20
           volumes:
             - /workdir/node_modules
 ```
 
-Build and push images from inside the container by propagating the host Docker socket:
+Build and push images from inside the container. `propagate-docker-daemon` hands it the host Docker daemon; `propagate-docker-config` hands it the agent's registry credentials:
 
 ```yaml
 steps:
   - command: ./scripts/build-and-push.sh
     plugins:
-      - jameslnewell/docker-run#v0.16.0:
+      - jameslnewell/docker-run#v0.18.0:
           image: docker:27
-          propagate-docker: true
+          propagate-docker-daemon: true
+          propagate-docker-config: true
+```
+
+Ask for only the half the step uses. A step that builds an image and hands it to a later step to push needs the daemon and no credentials at all:
+
+```yaml
+steps:
+  - command: docker build -t app:$BUILDKITE_BUILD_NUMBER .
+    plugins:
+      - jameslnewell/docker-run#v0.18.0:
+          image: docker:27
+          propagate-docker-daemon: true
 ```
 
 Clone private repositories by propagating the agent's SSH agent:
@@ -82,7 +94,7 @@ Clone private repositories by propagating the agent's SSH agent:
 steps:
   - command: npm ci
     plugins:
-      - jameslnewell/docker-run#v0.16.0:
+      - jameslnewell/docker-run#v0.18.0:
           image: node:20
           propagate-ssh-agent: true
 ```
@@ -92,7 +104,7 @@ Pass credentials to a step that talks to AWS. The image's `aws` entrypoint is le
 ```yaml
 steps:
   - plugins:
-      - jameslnewell/docker-run#v0.16.0:
+      - jameslnewell/docker-run#v0.18.0:
           image: amazon/aws-cli:latest
           command: ["ecr", "get-login-password"]
           propagate-aws: true
@@ -104,12 +116,12 @@ Bracket the step's own command with setup and teardown by listing the plugin twi
 steps:
   - command: npm test
     plugins:
-      - jameslnewell/docker-run#v0.16.0:
+      - jameslnewell/docker-run#v0.18.0:
           hook: pre-command
           image: amazon/aws-cli:latest
           propagate-aws: true
           command: ["s3", "cp", "s3://my-bucket/.env", ".env"]
-      - jameslnewell/docker-run#v0.16.0:
+      - jameslnewell/docker-run#v0.18.0:
           hook: post-command
           image: amazon/aws-cli:latest
           propagate-aws: true
@@ -123,7 +135,7 @@ steps:
 ```yaml
 steps:
   - plugins:
-      - jameslnewell/docker-run#v0.16.0:
+      - jameslnewell/docker-run#v0.18.0:
           hook: pre-command
           image: amazon/aws-cli:latest
           propagate-aws: true
@@ -145,7 +157,9 @@ steps:
 | `mount-checkout` | boolean | `true` | Mount the agent checkout directory at the working directory inside the container. |
 | `environment` | array | — | Environment variables as `KEY` (propagated from the agent) or `KEY=VALUE`. |
 | `volumes` | array | — | Volume mounts as `host:container`, or a bare container path for an anonymous volume. Host paths of `.` or beginning with `./` are resolved against `pwd`, so `.:/app` mounts the checkout. Every other host path — including dotfiles like `.env` and named volumes — is passed to Docker unchanged. |
-| `propagate-docker` | boolean | `false` | Mount the host Docker socket and a readable copy of the Docker config, enabling Docker-from-Docker without `userns:host`. The socket path is derived from `DOCKER_HOST` (default `unix:///var/run/docker.sock`); for a TCP daemon, `DOCKER_HOST` is passed through instead. |
+| `propagate-docker-daemon` | boolean | `false` | Give the container access to the host Docker daemon, enabling Docker-from-Docker without `userns:host`. The socket path is derived from `DOCKER_HOST` (default `unix:///var/run/docker.sock`); for a TCP daemon there is no socket to mount, so `DOCKER_HOST` is passed through instead. |
+| `propagate-docker-config` | boolean | `false` | Give the container the agent's registry credentials, so it can pull and push without logging in first. A readable copy of the agent's Docker config is mounted; the agent's own file is never exposed, so the container cannot overwrite its credentials. |
+| `propagate-docker` | boolean | `false` | **Deprecated.** Means `propagate-docker-daemon` and `propagate-docker-config` at once. Warns at runtime, and setting it to `true` alongside either of them is an error. See [Migrating from `propagate-docker`](#migrating-from-propagate-docker). |
 | `propagate-ssh-agent` | boolean | `false` | Forward the agent's SSH agent socket to `/run/ssh-agent` and set `SSH_AUTH_SOCK`. Also mounts the agent's `~/.ssh/known_hosts` (when present) at `/etc/ssh/ssh_known_hosts`, so `git`/`ssh` trust known hosts instead of hanging on an interactive host-key prompt. |
 | `propagate-aws` | boolean | `false` | Propagate `AWS_REGION`, `AWS_DEFAULT_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` and `AWS_SESSION_TOKEN`. |
 | `propagate-buildkite-agent` | boolean | `false` | Mount the Buildkite agent socket and propagate `BUILDKITE_AGENT_ACCESS_TOKEN`, so the container can run `buildkite-agent` commands. |
@@ -171,15 +185,39 @@ The plugin fails the step, rather than silently picking one, when the configurat
 - `command` is given as a string instead of an array.
 - `shell` is given as a string instead of an array or `false`.
 - `shell` is set as an array while `entrypoint` is also set, since `entrypoint` suppresses shell wrapping.
+- `propagate-docker: true` is set alongside `propagate-docker-daemon` or `propagate-docker-config`.
 
 The first of those does not apply to `hook: pre-command` or `hook: post-command`. There the step's command belongs to the command hook — the agent's, or another plugin's — so it is never a candidate for the container's command and cannot conflict with the plugin's `command`. A `pre-command` or `post-command` entry with no plugin `command` runs the image's own `CMD`.
+
+### Migrating from `propagate-docker`
+
+`propagate-docker` bundles two unrelated capabilities — access to the host Docker **daemon**, and the agent's registry **credentials** — and most steps want one of them. A step that copies image tags between registries needs the credentials and never talks to a daemon; a step that builds an image locally needs the daemon and not the credentials. The difference is worth drawing, because anything that can reach the host's Docker socket can mount `/` into a privileged container, so a step handed the daemon it did not ask for is handed root on the agent.
+
+Replace it with whichever halves the step actually uses:
+
+```yaml
+# Before
+propagate-docker: true
+
+# After — building and pushing needs both
+propagate-docker-daemon: true
+propagate-docker-config: true
+
+# After — copying tags, or pushing an image built elsewhere, needs the credentials alone
+propagate-docker-config: true
+
+# After — building locally, with no registry to authenticate against, needs the daemon alone
+propagate-docker-daemon: true
+```
+
+`propagate-docker` still works and still means both halves. It warns whenever it is used, and `propagate-docker: true` alongside either new option fails the step rather than quietly picking a winner — an explicit `propagate-docker: false` alongside one of them is an opt-out with only one reading, so it only warns. It will be removed in a future major release; consumers pin exact tags, so nothing is forced off it in the meantime.
 
 ## How it works
 
 1. **Pull** — `docker pull <image>`
 2. **Create** — `docker create` with the configured workdir, mounts, environment and command. A TTY is always allocated, so tools that colourise their output when attached to a terminal keep doing so in the build log.
 3. **Run** — `docker start --attach`, streaming the container's output into the step log
-4. **Cleanup** — the `pre-exit` hook always runs `docker rm -f`, and removes the temporary Docker config copy created by `propagate-docker`
+4. **Cleanup** — the `pre-exit` hook always runs `docker rm -f`, and removes the temporary Docker config copy created by `propagate-docker-config`
 
 Each phase is its own log group, so you can fold and expand them independently and see exactly where time is spent.
 
