@@ -160,18 +160,29 @@ fi
 
 if [[ "$propagate_docker_config" == "true" ]]; then
   # Copy rather than directly mounting: the original file is owned by the agent user (mode 0600)
-  # and may not be readable inside the container without --userns host. A 0644 copy avoids that.
+  # and may not be readable inside the container without --userns host. A 0644 copy avoids that,
+  # and the container is never handed a path that leads back to the agent's live credentials.
   DOCKER_CONFIG_DIR="${DOCKER_CONFIG:-${HOME:-/var/lib/buildkite-agent}/.docker}"
   if [[ -f "${DOCKER_CONFIG_DIR}/config.json" ]]; then
     DOCKER_RUN_TMPDIR="$(mktemp -d)"
-    # The marker goes down before anything is copied into the directory, so a
-    # failure partway through still leaves pre-exit something to clean up rather
-    # than stranding a copy of the agent's credentials on the host. A step that
-    # takes the daemon half alone never gets here, and leaves no marker at all.
+    # The marker goes down before the credentials are copied, so a failure partway
+    # through still leaves pre-exit something to clean up rather than stranding a
+    # copy on the host. A step that takes the daemon half alone never gets here,
+    # and leaves no marker at all.
     printf '%s\n' "$DOCKER_RUN_TMPDIR" > "/tmp/${CONTAINER_NAME}.tmpdir"
     cp "${DOCKER_CONFIG_DIR}/config.json" "${DOCKER_RUN_TMPDIR}/config.json"
     chmod 0644 "${DOCKER_RUN_TMPDIR}/config.json"
-    CREATE_ARGS+=(-v "${DOCKER_RUN_TMPDIR}/config.json:/root/.docker/config.json")
+    # DOCKER_CONFIG rather than /root/.docker: /root is 0700, so a container that
+    # does not run as root can never read a config mounted under it — and every
+    # tool that reads registry credentials (docker, crane, skopeo, regctl) honours
+    # DOCKER_CONFIG. The mount's parent directory does not exist in the image, so
+    # the daemon creates it root-owned 0755, which any container user can traverse.
+    # `mktemp -d` stays 0700 on the agent, keeping the copy away from every other
+    # uid there, and mounting the file rather than the directory keeps whatever the
+    # container writes next to it (`docker buildx` makes a `buildx/`) in the
+    # container's own layer rather than on the host.
+    CREATE_ARGS+=(-v "${DOCKER_RUN_TMPDIR}/config.json:/run/docker-config/config.json")
+    CREATE_ARGS+=(-e "DOCKER_CONFIG=/run/docker-config")
   fi
 fi
 

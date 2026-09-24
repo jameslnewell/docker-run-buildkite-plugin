@@ -36,7 +36,7 @@ configuration:
       description: "Give the container access to the host Docker daemon, enabling Docker-from-Docker without userns:host. Mounts the socket named by DOCKER_HOST (default unix:///var/run/docker.sock); when DOCKER_HOST names a TCP daemon there is no socket to mount, so the variable is passed through instead."
     propagate-docker-config:
       type: boolean
-      description: "Give the container the agent's registry credentials, so it can pull and push without logging in first. A readable copy of the agent's Docker config is mounted — the original is never exposed, so the container cannot overwrite the agent's credentials."
+      description: "Give the container the agent's registry credentials, so it can pull and push without logging in first. A readable copy of the agent's Docker config is mounted at /run/docker-config/config.json and DOCKER_CONFIG names that directory, so a container that does not run as root can read it. The agent's own config is never exposed, so the container cannot overwrite the agent's credentials."
     propagate-docker:
       type: boolean
       description: "Deprecated: means propagate-docker-daemon and propagate-docker-config at once. Warns at runtime, and setting it to true alongside either of them is an error. Prefer the two options — a step that wants registry credentials rarely also wants root-equivalent access to the host daemon."

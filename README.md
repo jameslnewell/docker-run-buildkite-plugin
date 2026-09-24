@@ -88,6 +88,19 @@ steps:
           propagate-docker-daemon: true
 ```
 
+And a tool that copies image tags between registries — `crane`, `skopeo`, `regctl` — talks to the registry over HTTP and never to a Docker daemon, so it wants the credentials on their own. These images run as a non-root user, which is what `DOCKER_CONFIG` makes workable:
+
+```yaml
+steps:
+  - plugins:
+      - jameslnewell/docker-run#v0.18.0:
+          image: gcr.io/go-containerregistry/crane:v0.22.0
+          command: ["copy", "my-registry/app:build-42", "my-registry/app:v1.2.3"]
+          propagate-docker-config: true
+          # the copy is registry-to-registry; it never reads the checkout
+          mount-checkout: false
+```
+
 Clone private repositories by propagating the agent's SSH agent:
 
 ```yaml
@@ -158,7 +171,7 @@ steps:
 | `environment` | array | — | Environment variables as `KEY` (propagated from the agent) or `KEY=VALUE`. |
 | `volumes` | array | — | Volume mounts as `host:container`, or a bare container path for an anonymous volume. Host paths of `.` or beginning with `./` are resolved against `pwd`, so `.:/app` mounts the checkout. Every other host path — including dotfiles like `.env` and named volumes — is passed to Docker unchanged. |
 | `propagate-docker-daemon` | boolean | `false` | Give the container access to the host Docker daemon, enabling Docker-from-Docker without `userns:host`. The socket path is derived from `DOCKER_HOST` (default `unix:///var/run/docker.sock`); for a TCP daemon there is no socket to mount, so `DOCKER_HOST` is passed through instead. |
-| `propagate-docker-config` | boolean | `false` | Give the container the agent's registry credentials, so it can pull and push without logging in first. A readable copy of the agent's Docker config is mounted; the agent's own file is never exposed, so the container cannot overwrite its credentials. |
+| `propagate-docker-config` | boolean | `false` | Give the container the agent's registry credentials, so it can pull and push without logging in first. A readable copy of the agent's Docker config is mounted at `/run/docker-config/config.json`, with `DOCKER_CONFIG` naming that directory. See [The propagated Docker config](#the-propagated-docker-config). |
 | `propagate-docker` | boolean | `false` | **Deprecated.** Means `propagate-docker-daemon` and `propagate-docker-config` at once. Warns at runtime, and setting it to `true` alongside either of them is an error. See [Migrating from `propagate-docker`](#migrating-from-propagate-docker). |
 | `propagate-ssh-agent` | boolean | `false` | Forward the agent's SSH agent socket to `/run/ssh-agent` and set `SSH_AUTH_SOCK`. Also mounts the agent's `~/.ssh/known_hosts` (when present) at `/etc/ssh/ssh_known_hosts`, so `git`/`ssh` trust known hosts instead of hanging on an interactive host-key prompt. |
 | `propagate-aws` | boolean | `false` | Propagate `AWS_REGION`, `AWS_DEFAULT_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` and `AWS_SESSION_TOKEN`. |
@@ -167,6 +180,32 @@ steps:
 | `hook` | `command`, `pre-command` or `post-command` | `command` | Buildkite hook phase to run in. Use `pre-command` to run as setup before the main command hook, or `post-command` to run as teardown after it. Both collapse their log groups so they stay out of the way, and both run only the plugin's `command`. |
 
 `additionalProperties` is disabled, so an unrecognised or misspelled option fails validation rather than being silently ignored.
+
+### The propagated Docker config
+
+`propagate-docker-config` copies the agent's `config.json` into a job-scoped
+temp directory, mounts the copy at `/run/docker-config/config.json`, and sets
+`DOCKER_CONFIG` to `/run/docker-config`. The copy is removed by `pre-exit`; the
+agent's own `~/.docker` is never mounted, so nothing in the container can overwrite the
+credentials the agent goes on using.
+
+- **`DOCKER_CONFIG` is set by the plugin**, after the step's own `environment`,
+  so a `DOCKER_CONFIG` set there does not take effect. `docker`, `crane`,
+  `skopeo` and `regctl` all read it.
+- **A container that does not run as root can read the credentials**, which is
+  the point of `DOCKER_CONFIG` over `/root/.docker`: `/root` is `0700`, so a
+  distroless image with a non-root `USER` could never reach a config mounted
+  under it. The mount's parent does not exist in the image, so the daemon
+  creates it root-owned `0755` and any container user can traverse it.
+- **The container cannot rewrite the propagated config.** It is a bind-mounted
+  file, and `docker login` saves credentials by renaming a temp file over
+  `config.json`, which fails with `EBUSY` against one. A step that needs to run
+  its own `docker login` should take `propagate-docker-daemon` and leave this
+  off, so that login has an ordinary path to write to.
+- **Only `config.json` is copied.** An agent whose config delegates to a
+  credential helper (`credsStore` or `credHelpers`, as `docker-credential-ecr-login`
+  setups do) needs that helper binary present in the image as well — a
+  distroless image has no helpers and fails with `executable file not found`.
 
 ### Commands and shells
 
@@ -210,6 +249,8 @@ propagate-docker-config: true
 propagate-docker-daemon: true
 ```
 
+The config half no longer mounts `config.json` at `/root/.docker/config.json`; it mounts it at `/run/docker-config/config.json` and sets `DOCKER_CONFIG`, as [The propagated Docker config](#the-propagated-docker-config) describes. A step that reads the credentials by path rather than through `DOCKER_CONFIG` has to be pointed at the new one.
+
 `propagate-docker` still works and still means both halves. It warns whenever it is used, and `propagate-docker: true` alongside either new option fails the step rather than quietly picking a winner — an explicit `propagate-docker: false` alongside one of them is an opt-out with only one reading, so it only warns. It will be removed in a future major release; consumers pin exact tags, so nothing is forced off it in the meantime.
 
 ## How it works
@@ -217,7 +258,7 @@ propagate-docker-daemon: true
 1. **Pull** — `docker pull <image>`
 2. **Create** — `docker create` with the configured workdir, mounts, environment and command. A TTY is always allocated, so tools that colourise their output when attached to a terminal keep doing so in the build log.
 3. **Run** — `docker start --attach`, streaming the container's output into the step log
-4. **Cleanup** — the `pre-exit` hook always runs `docker rm -f`, and removes the temporary Docker config copy created by `propagate-docker-config`
+4. **Cleanup** — the `pre-exit` hook always runs `docker rm -f`, and removes the temporary Docker config directory created by `propagate-docker-config`
 
 Each phase is its own log group, so you can fold and expand them independently and see exactly where time is spent.
 
