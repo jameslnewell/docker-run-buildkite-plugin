@@ -552,12 +552,135 @@ teardown() {
   refute_output --partial "BUILDKITE_NOT_A_VAR"
 }
 
-@test "propagate-docker mounts default socket when DOCKER_HOST is unset" {
+@test "propagate-docker-daemon mounts default socket when DOCKER_HOST is unset" {
   unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND
   unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_0
   unset DOCKER_HOST
-  export BUILDKITE_PLUGIN_DOCKER_RUN_PROPAGATE_DOCKER="true"
+  export BUILDKITE_PLUGIN_DOCKER_RUN_PROPAGATE_DOCKER_DAEMON="true"
+
+  stub docker \
+    "pull ubuntu:24.04 : true" \
+    "create --name docker-run-buildkite-plugin-test-job-id --tty -v /var/run/docker.sock:/var/run/docker.sock ubuntu:24.04 : true" \
+    "start --attach docker-run-buildkite-plugin-test-job-id : true"
+
+  run "$PLUGIN_DIR/hooks/command"
+
+  assert_success
+}
+
+@test "propagate-docker-daemon uses custom unix socket from DOCKER_HOST" {
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_0
+  export BUILDKITE_PLUGIN_DOCKER_RUN_PROPAGATE_DOCKER_DAEMON="true"
+  export DOCKER_HOST="unix:///run/user/1000/docker.sock"
+
+  stub docker \
+    "pull ubuntu:24.04 : true" \
+    "create --name docker-run-buildkite-plugin-test-job-id --tty -v /run/user/1000/docker.sock:/var/run/docker.sock ubuntu:24.04 : true" \
+    "start --attach docker-run-buildkite-plugin-test-job-id : true"
+
+  run "$PLUGIN_DIR/hooks/command"
+
+  assert_success
+}
+
+@test "propagate-docker-daemon passes DOCKER_HOST env var for TCP connections" {
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_0
+  export BUILDKITE_PLUGIN_DOCKER_RUN_PROPAGATE_DOCKER_DAEMON="true"
+  export DOCKER_HOST="tcp://localhost:2375"
+
+  stub docker \
+    "pull ubuntu:24.04 : true" \
+    "create --name docker-run-buildkite-plugin-test-job-id --tty -e DOCKER_HOST=tcp://localhost:2375 ubuntu:24.04 : true" \
+    "start --attach docker-run-buildkite-plugin-test-job-id : true"
+
+  run "$PLUGIN_DIR/hooks/command"
+
+  assert_success
+}
+
+@test "propagate-docker-daemon mounts no docker config and leaves nothing for pre-exit to clean up" {
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_0
+  unset DOCKER_HOST
+  export BUILDKITE_PLUGIN_DOCKER_RUN_PROPAGATE_DOCKER_DAEMON="true"
+  # A config the daemon half must ignore — it is the config half's to mount.
+  real_docker_config=$(mktemp -d)
+  echo '{}' > "${real_docker_config}/config.json"
+  export DOCKER_CONFIG="$real_docker_config"
+  rm -f "/tmp/docker-run-buildkite-plugin-${BUILDKITE_JOB_ID}.tmpdir"
+
+  stub docker \
+    "pull ubuntu:24.04 : true" \
+    ":: true" \
+    "start --attach docker-run-buildkite-plugin-test-job-id : true"
+
+  run bash -c "${PLUGIN_DIR}/hooks/command 2>&1"
+
+  assert_success
+  assert_output --partial "-v /var/run/docker.sock:/var/run/docker.sock"
+  refute_output --partial "/root/.docker/config.json"
+  rm -rf "$real_docker_config"
+  [[ ! -f "/tmp/docker-run-buildkite-plugin-${BUILDKITE_JOB_ID}.tmpdir" ]]
+}
+
+@test "propagate-docker-config mounts a readable copy of the config without the socket" {
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_0
+  unset DOCKER_HOST
+  export BUILDKITE_PLUGIN_DOCKER_RUN_PROPAGATE_DOCKER_CONFIG="true"
   # Create a real config file before the mktemp stub so the -f guard passes
+  real_docker_config=$(mktemp -d)
+  echo '{}' > "${real_docker_config}/config.json"
+  export DOCKER_CONFIG="$real_docker_config"
+
+  stub mktemp \
+    "-d : echo /tmp/docker-run-test-tmpdir"
+
+  stub cp \
+    "${real_docker_config}/config.json /tmp/docker-run-test-tmpdir/config.json : true"
+
+  stub chmod \
+    "0644 /tmp/docker-run-test-tmpdir/config.json : true"
+
+  stub docker \
+    "pull ubuntu:24.04 : true" \
+    "create --name docker-run-buildkite-plugin-test-job-id --tty -v /tmp/docker-run-test-tmpdir/config.json:/root/.docker/config.json ubuntu:24.04 : true" \
+    "start --attach docker-run-buildkite-plugin-test-job-id : true"
+
+  run "$PLUGIN_DIR/hooks/command"
+
+  assert_success
+  rm -rf "$real_docker_config"
+  rm -f "/tmp/docker-run-buildkite-plugin-${BUILDKITE_JOB_ID}.tmpdir"
+}
+
+@test "propagate-docker-config creates nothing when config.json does not exist" {
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_0
+  unset DOCKER_HOST
+  export BUILDKITE_PLUGIN_DOCKER_RUN_PROPAGATE_DOCKER_CONFIG="true"
+  export DOCKER_CONFIG="/nonexistent/docker-config"
+  rm -f "/tmp/docker-run-buildkite-plugin-${BUILDKITE_JOB_ID}.tmpdir"
+
+  stub docker \
+    "pull ubuntu:24.04 : true" \
+    "create --name docker-run-buildkite-plugin-test-job-id --tty ubuntu:24.04 : true" \
+    "start --attach docker-run-buildkite-plugin-test-job-id : true"
+
+  run "$PLUGIN_DIR/hooks/command"
+
+  assert_success
+  [[ ! -f "/tmp/docker-run-buildkite-plugin-${BUILDKITE_JOB_ID}.tmpdir" ]]
+}
+
+@test "propagate-docker-daemon and propagate-docker-config together mount both" {
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_0
+  unset DOCKER_HOST
+  export BUILDKITE_PLUGIN_DOCKER_RUN_PROPAGATE_DOCKER_DAEMON="true"
+  export BUILDKITE_PLUGIN_DOCKER_RUN_PROPAGATE_DOCKER_CONFIG="true"
   real_docker_config=$(mktemp -d)
   echo '{}' > "${real_docker_config}/config.json"
   export DOCKER_CONFIG="$real_docker_config"
@@ -583,85 +706,93 @@ teardown() {
   rm -f "/tmp/docker-run-buildkite-plugin-${BUILDKITE_JOB_ID}.tmpdir"
 }
 
-@test "propagate-docker uses custom unix socket from DOCKER_HOST" {
-  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND
-  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_0
-  export BUILDKITE_PLUGIN_DOCKER_RUN_PROPAGATE_DOCKER="true"
-  export DOCKER_HOST="unix:///run/user/1000/docker.sock"
-  real_docker_config=$(mktemp -d)
-  echo '{}' > "${real_docker_config}/config.json"
-  export DOCKER_CONFIG="$real_docker_config"
-
-  stub mktemp \
-    "-d : echo /tmp/docker-run-test-tmpdir"
-
-  stub cp \
-    "${real_docker_config}/config.json /tmp/docker-run-test-tmpdir/config.json : true"
-
-  stub chmod \
-    "0644 /tmp/docker-run-test-tmpdir/config.json : true"
-
-  stub docker \
-    "pull ubuntu:24.04 : true" \
-    "create --name docker-run-buildkite-plugin-test-job-id --tty -v /run/user/1000/docker.sock:/var/run/docker.sock -v /tmp/docker-run-test-tmpdir/config.json:/root/.docker/config.json ubuntu:24.04 : true" \
-    "start --attach docker-run-buildkite-plugin-test-job-id : true"
-
-  run "$PLUGIN_DIR/hooks/command"
-
-  assert_success
-  rm -rf "$real_docker_config"
-  rm -f "/tmp/docker-run-buildkite-plugin-${BUILDKITE_JOB_ID}.tmpdir"
-}
-
-@test "propagate-docker passes DOCKER_HOST env var for TCP connections" {
-  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND
-  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_0
-  export BUILDKITE_PLUGIN_DOCKER_RUN_PROPAGATE_DOCKER="true"
-  export DOCKER_HOST="tcp://localhost:2375"
-  real_docker_config=$(mktemp -d)
-  echo '{}' > "${real_docker_config}/config.json"
-  export DOCKER_CONFIG="$real_docker_config"
-
-  stub mktemp \
-    "-d : echo /tmp/docker-run-test-tmpdir"
-
-  stub cp \
-    "${real_docker_config}/config.json /tmp/docker-run-test-tmpdir/config.json : true"
-
-  stub chmod \
-    "0644 /tmp/docker-run-test-tmpdir/config.json : true"
-
-  stub docker \
-    "pull ubuntu:24.04 : true" \
-    "create --name docker-run-buildkite-plugin-test-job-id --tty -e DOCKER_HOST=tcp://localhost:2375 -v /tmp/docker-run-test-tmpdir/config.json:/root/.docker/config.json ubuntu:24.04 : true" \
-    "start --attach docker-run-buildkite-plugin-test-job-id : true"
-
-  run "$PLUGIN_DIR/hooks/command"
-
-  assert_success
-  rm -rf "$real_docker_config"
-  rm -f "/tmp/docker-run-buildkite-plugin-${BUILDKITE_JOB_ID}.tmpdir"
-}
-
-@test "propagate-docker skips config mount when config.json does not exist" {
+@test "Deprecated propagate-docker still mounts both halves and warns" {
   unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND
   unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_0
   unset DOCKER_HOST
   export BUILDKITE_PLUGIN_DOCKER_RUN_PROPAGATE_DOCKER="true"
-  export DOCKER_CONFIG="/nonexistent/docker-config"
+  real_docker_config=$(mktemp -d)
+  echo '{}' > "${real_docker_config}/config.json"
+  export DOCKER_CONFIG="$real_docker_config"
 
   stub mktemp \
     "-d : echo /tmp/docker-run-test-tmpdir"
+
+  stub cp \
+    "${real_docker_config}/config.json /tmp/docker-run-test-tmpdir/config.json : true"
+
+  stub chmod \
+    "0644 /tmp/docker-run-test-tmpdir/config.json : true"
+
+  stub docker \
+    "pull ubuntu:24.04 : true" \
+    "create --name docker-run-buildkite-plugin-test-job-id --tty -v /var/run/docker.sock:/var/run/docker.sock -v /tmp/docker-run-test-tmpdir/config.json:/root/.docker/config.json ubuntu:24.04 : true" \
+    "start --attach docker-run-buildkite-plugin-test-job-id : true"
+
+  run bash -c "${PLUGIN_DIR}/hooks/command 2>&1"
+
+  assert_success
+  assert_output --partial "propagate-docker option is deprecated"
+  rm -rf "$real_docker_config"
+  rm -f "/tmp/docker-run-buildkite-plugin-${BUILDKITE_JOB_ID}.tmpdir"
+}
+
+@test "Deprecated propagate-docker false enables neither half" {
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_0
+  unset DOCKER_HOST
+  export BUILDKITE_PLUGIN_DOCKER_RUN_PROPAGATE_DOCKER="false"
+
+  stub docker \
+    "pull ubuntu:24.04 : true" \
+    "create --name docker-run-buildkite-plugin-test-job-id --tty ubuntu:24.04 : true" \
+    "start --attach docker-run-buildkite-plugin-test-job-id : true"
+
+  run "$PLUGIN_DIR/hooks/command"
+
+  assert_success
+}
+
+@test "propagate-docker alongside propagate-docker-daemon errors" {
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_0
+  export BUILDKITE_PLUGIN_DOCKER_RUN_PROPAGATE_DOCKER="true"
+  export BUILDKITE_PLUGIN_DOCKER_RUN_PROPAGATE_DOCKER_DAEMON="true"
+
+  run "$PLUGIN_DIR/hooks/command"
+
+  assert_failure
+  assert_output --partial "Cannot specify propagate-docker alongside"
+}
+
+@test "propagate-docker alongside propagate-docker-config errors" {
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_0
+  export BUILDKITE_PLUGIN_DOCKER_RUN_PROPAGATE_DOCKER="true"
+  export BUILDKITE_PLUGIN_DOCKER_RUN_PROPAGATE_DOCKER_CONFIG="true"
+
+  run "$PLUGIN_DIR/hooks/command"
+
+  assert_failure
+  assert_output --partial "Cannot specify propagate-docker alongside"
+}
+
+@test "propagate-docker false alongside a half is an opt-out, not an error" {
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_0
+  unset DOCKER_HOST
+  export BUILDKITE_PLUGIN_DOCKER_RUN_PROPAGATE_DOCKER="false"
+  export BUILDKITE_PLUGIN_DOCKER_RUN_PROPAGATE_DOCKER_DAEMON="true"
 
   stub docker \
     "pull ubuntu:24.04 : true" \
     "create --name docker-run-buildkite-plugin-test-job-id --tty -v /var/run/docker.sock:/var/run/docker.sock ubuntu:24.04 : true" \
     "start --attach docker-run-buildkite-plugin-test-job-id : true"
 
-  run "$PLUGIN_DIR/hooks/command"
+  run bash -c "${PLUGIN_DIR}/hooks/command 2>&1"
 
   assert_success
-  rm -f "/tmp/docker-run-buildkite-plugin-${BUILDKITE_JOB_ID}.tmpdir"
+  assert_output --partial "propagate-docker option is deprecated"
 }
 
 @test "Relative volume . is resolved to pwd" {
