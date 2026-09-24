@@ -620,12 +620,15 @@ teardown() {
 
   assert_success
   assert_output --partial "-v /var/run/docker.sock:/var/run/docker.sock"
-  refute_output --partial "/root/.docker/config.json"
+  refute_output --partial "/run/docker-config"
   rm -rf "$real_docker_config"
   [[ ! -f "/tmp/docker-run-buildkite-plugin-${BUILDKITE_JOB_ID}.tmpdir" ]]
 }
 
-@test "propagate-docker-config mounts a readable copy of the config without the socket" {
+# The copy is mounted outside /root and DOCKER_CONFIG names its directory, which is
+# what lets a container that does not run as root read it — /root is 0700. The exact
+# create line below is what pins both halves of that.
+@test "propagate-docker-config mounts the config outside /root and exports DOCKER_CONFIG" {
   unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND
   unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_0
   unset DOCKER_HOST
@@ -646,7 +649,7 @@ teardown() {
 
   stub docker \
     "pull ubuntu:24.04 : true" \
-    "create --name docker-run-buildkite-plugin-test-job-id --tty -v /tmp/docker-run-test-tmpdir/config.json:/root/.docker/config.json ubuntu:24.04 : true" \
+    "create --name docker-run-buildkite-plugin-test-job-id --tty -v /tmp/docker-run-test-tmpdir/config.json:/run/docker-config/config.json -e DOCKER_CONFIG=/run/docker-config ubuntu:24.04 : true" \
     "start --attach docker-run-buildkite-plugin-test-job-id : true"
 
   run "$PLUGIN_DIR/hooks/command"
@@ -654,6 +657,41 @@ teardown() {
   assert_success
   rm -rf "$real_docker_config"
   rm -f "/tmp/docker-run-buildkite-plugin-${BUILDKITE_JOB_ID}.tmpdir"
+}
+
+@test "propagate-docker-config exports DOCKER_CONFIG after the step's own environment" {
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_0
+  unset DOCKER_HOST
+  export BUILDKITE_PLUGIN_DOCKER_RUN_ENVIRONMENT_0="DOCKER_CONFIG=/somewhere/else"
+  export BUILDKITE_PLUGIN_DOCKER_RUN_PROPAGATE_DOCKER_CONFIG="true"
+  real_docker_config=$(mktemp -d)
+  echo '{}' > "${real_docker_config}/config.json"
+  export DOCKER_CONFIG="$real_docker_config"
+
+  stub mktemp \
+    "-d : echo /tmp/docker-run-test-tmpdir"
+
+  stub cp \
+    "${real_docker_config}/config.json /tmp/docker-run-test-tmpdir/config.json : true"
+
+  stub chmod \
+    "0644 /tmp/docker-run-test-tmpdir/config.json : true"
+
+  stub docker \
+    "pull ubuntu:24.04 : true" \
+    ":: true" \
+    "start --attach docker-run-buildkite-plugin-test-job-id : true"
+
+  run bash -c "${PLUGIN_DIR}/hooks/command 2>&1"
+
+  assert_success
+  rm -rf "$real_docker_config"
+  rm -f "/tmp/docker-run-buildkite-plugin-${BUILDKITE_JOB_ID}.tmpdir"
+  # Docker applies the last -e it is given for a name, so emitting the plugin's
+  # value after the step's is what makes the README's precedence claim true. The
+  # order is ours to control; the resolution is docker's, so pin the order.
+  [[ "$output" == *"-e DOCKER_CONFIG=/somewhere/else"*"-e DOCKER_CONFIG=/run/docker-config"* ]]
 }
 
 @test "propagate-docker-config creates nothing when config.json does not exist" {
@@ -696,7 +734,7 @@ teardown() {
 
   stub docker \
     "pull ubuntu:24.04 : true" \
-    "create --name docker-run-buildkite-plugin-test-job-id --tty -v /var/run/docker.sock:/var/run/docker.sock -v /tmp/docker-run-test-tmpdir/config.json:/root/.docker/config.json ubuntu:24.04 : true" \
+    "create --name docker-run-buildkite-plugin-test-job-id --tty -v /var/run/docker.sock:/var/run/docker.sock -v /tmp/docker-run-test-tmpdir/config.json:/run/docker-config/config.json -e DOCKER_CONFIG=/run/docker-config ubuntu:24.04 : true" \
     "start --attach docker-run-buildkite-plugin-test-job-id : true"
 
   run "$PLUGIN_DIR/hooks/command"
@@ -726,7 +764,7 @@ teardown() {
 
   stub docker \
     "pull ubuntu:24.04 : true" \
-    "create --name docker-run-buildkite-plugin-test-job-id --tty -v /var/run/docker.sock:/var/run/docker.sock -v /tmp/docker-run-test-tmpdir/config.json:/root/.docker/config.json ubuntu:24.04 : true" \
+    "create --name docker-run-buildkite-plugin-test-job-id --tty -v /var/run/docker.sock:/var/run/docker.sock -v /tmp/docker-run-test-tmpdir/config.json:/run/docker-config/config.json -e DOCKER_CONFIG=/run/docker-config ubuntu:24.04 : true" \
     "start --attach docker-run-buildkite-plugin-test-job-id : true"
 
   run bash -c "${PLUGIN_DIR}/hooks/command 2>&1"
