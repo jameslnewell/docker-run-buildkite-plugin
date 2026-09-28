@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Run the suite in buildkite/plugin-tester
         run: docker run --rm -v "$PWD:/plugin:ro" buildkite/plugin-tester
@@ -33,7 +33,7 @@ jobs:
     # sit here until the job's six-hour ceiling. Fail fast instead.
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Lifted out of the same image the other job uses rather than installed from
       # upstream, because the suite depends on Buildkite's fork of bats-mock — it
