@@ -67,7 +67,10 @@ plugin_copy_out() {
   # arrives when the container has gone or its filesystem cannot be read
   # either, so the path is only called missing if / does answer. If it does
   # not, the copy below fails with docker's own error.
-  if [[ -z "$(docker cp "${container}:${from}" - 2>/dev/null | head -c 1)" \
+  #
+  # `--follow-link` here and on the copy: without it a `from` that is a symlink
+  # is copied as the link, which points nowhere useful on the agent.
+  if [[ -z "$(docker cp --follow-link "${container}:${from}" - 2>/dev/null | head -c 1)" \
     && -n "$(docker cp "${container}:/" - 2>/dev/null | head -c 1)" ]]; then
     echo "Skipped ${from}: not found in the container"
     return 0
@@ -86,7 +89,7 @@ plugin_copy_out() {
   fi
 
   set -x
-  docker cp "${container}:${from}" "${scratch}/copy" || { copy_status=$?; } 2>/dev/null
+  docker cp --follow-link "${container}:${from}" "${scratch}/copy" || { copy_status=$?; } 2>/dev/null
   { set +x; } 2>/dev/null
 
   # A `to` that already holds the same files is left alone. That is the mounted

@@ -236,11 +236,12 @@ recreates its output directory cannot remove a mount point.
 
 Each entry is `<from>:<to>`:
 
-- **`from` is a path in the container.** A relative path is resolved against
-  the container's working directory: the `workdir` option, `mount-checkout`'s
-  `/workdir`, or the image's `WORKDIR`. An image that sets none ran its command
-  in `/`, so that is what `from` is resolved against. An absolute path is used
-  as is. (`docker cp` on its own resolves a relative path against `/`.)
+- **`from` is a path in the container.** If it is a symlink, what it points to
+  is copied. A relative path is resolved against the container's working
+  directory: the `workdir` option, `mount-checkout`'s `/workdir`, or the
+  image's `WORKDIR`. An image that sets none ran its command in `/`, so that is
+  what `from` is resolved against. An absolute path is used as is. (`docker cp`
+  on its own resolves a relative path against `/`.)
 - **`to` is a path inside the job's working directory.** Its parent directories
   are created, and a leading `./` is accepted. Whatever is already at `to` is
   replaced rather than copied into, so output left over from an earlier job is

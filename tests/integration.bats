@@ -209,6 +209,23 @@ in_job_dir() {
   [[ "$(cat reports/junit.xml)" == "report" ]]
 }
 
+@test "integration: copy-out copies what a symlinked from points to, not the link" {
+  skip_if_no_docker
+  in_job_dir
+
+  # `docker cp` copies a symlink as a symlink unless told to follow it, and a
+  # link to /real means nothing on the agent.
+  export BUILDKITE_PLUGIN_DOCKER_RUN_WORKDIR="/workdir"
+  export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_2="mkdir /real && echo covered > /real/lcov.info && ln -s /real coverage"
+  export BUILDKITE_PLUGIN_DOCKER_RUN_COPY_OUT_0="coverage:coverage"
+
+  run bash "$PLUGIN_PATH/hooks/command"
+
+  [[ $status -eq 0 ]]
+  [[ ! -L coverage ]]
+  [[ "$(cat coverage/lcov.info)" == "covered" ]]
+}
+
 @test "integration: copy-out skips a from the container does not have" {
   skip_if_no_docker
   in_job_dir

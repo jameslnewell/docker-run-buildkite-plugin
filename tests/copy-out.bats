@@ -29,7 +29,7 @@ teardown() {
 
 # Each entry is two `cp` calls: a probe that asks for the path as a tar stream
 # (`-`), where any output at all means the path exists, and then the copy, where
-# $3 is the destination the hook handed to docker. A probe that answers nothing
+# $4 is the destination the hook handed to docker. A probe that answers nothing
 # is followed by the same probe of /, which tells a missing path from a
 # container that cannot be read at all.
 
@@ -41,8 +41,8 @@ teardown() {
     "create --name docker-run-buildkite-plugin-test-job-id --tty ubuntu:24.04 : true" \
     "start --attach docker-run-buildkite-plugin-test-job-id : true" \
     "${INSPECT_WORKDIR} docker-run-buildkite-plugin-test-job-id : echo /workdir/backend" \
-    "cp docker-run-buildkite-plugin-test-job-id:/workdir/backend/coverage - : echo tar" \
-    "cp docker-run-buildkite-plugin-test-job-id:/workdir/backend/coverage * : echo covered > \$3"
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/backend/coverage - : echo tar" \
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/backend/coverage * : echo covered > \$4"
 
   run "$PLUGIN_DIR/hooks/command"
 
@@ -60,8 +60,8 @@ teardown() {
     "create --name docker-run-buildkite-plugin-test-job-id --tty ubuntu:24.04 : true" \
     "start --attach docker-run-buildkite-plugin-test-job-id : true" \
     "${INSPECT_WORKDIR} docker-run-buildkite-plugin-test-job-id : echo" \
-    "cp docker-run-buildkite-plugin-test-job-id:/coverage - : echo tar" \
-    "cp docker-run-buildkite-plugin-test-job-id:/coverage * : echo covered > \$3"
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/coverage - : echo tar" \
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/coverage * : echo covered > \$4"
 
   run "$PLUGIN_DIR/hooks/command"
 
@@ -77,8 +77,8 @@ teardown() {
     "create --name docker-run-buildkite-plugin-test-job-id --tty ubuntu:24.04 : true" \
     "start --attach docker-run-buildkite-plugin-test-job-id : true" \
     "${INSPECT_WORKDIR} docker-run-buildkite-plugin-test-job-id : echo /workdir" \
-    "cp docker-run-buildkite-plugin-test-job-id:/tmp/report.xml - : echo tar" \
-    "cp docker-run-buildkite-plugin-test-job-id:/tmp/report.xml * : echo report > \$3"
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/tmp/report.xml - : echo tar" \
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/tmp/report.xml * : echo report > \$4"
 
   run "$PLUGIN_DIR/hooks/command"
 
@@ -94,8 +94,8 @@ teardown() {
     "create --name docker-run-buildkite-plugin-test-job-id --tty ubuntu:24.04 : true" \
     "start --attach docker-run-buildkite-plugin-test-job-id : true" \
     "${INSPECT_WORKDIR} docker-run-buildkite-plugin-test-job-id : echo /workdir" \
-    "cp docker-run-buildkite-plugin-test-job-id:/workdir/coverage - : echo tar" \
-    "cp docker-run-buildkite-plugin-test-job-id:/workdir/coverage * : echo covered > \$3"
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage - : echo tar" \
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage * : echo covered > \$4"
 
   run "$PLUGIN_DIR/hooks/command"
 
@@ -112,10 +112,10 @@ teardown() {
     "create --name docker-run-buildkite-plugin-test-job-id --tty ubuntu:24.04 : true" \
     "start --attach docker-run-buildkite-plugin-test-job-id : true" \
     "${INSPECT_WORKDIR} docker-run-buildkite-plugin-test-job-id : echo /workdir" \
-    "cp docker-run-buildkite-plugin-test-job-id:/workdir/coverage - : echo tar" \
-    "cp docker-run-buildkite-plugin-test-job-id:/workdir/coverage * : echo covered > \$3" \
-    "cp docker-run-buildkite-plugin-test-job-id:/workdir/docs - : echo tar" \
-    "cp docker-run-buildkite-plugin-test-job-id:/workdir/docs * : echo documented > \$3"
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage - : echo tar" \
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage * : echo covered > \$4" \
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/docs - : echo tar" \
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/docs * : echo documented > \$4"
 
   run "$PLUGIN_DIR/hooks/command"
 
@@ -134,8 +134,8 @@ teardown() {
     "create --name docker-run-buildkite-plugin-test-job-id --tty ubuntu:24.04 : true" \
     "start --attach docker-run-buildkite-plugin-test-job-id : true" \
     "${INSPECT_WORKDIR} docker-run-buildkite-plugin-test-job-id : echo /workdir" \
-    "cp docker-run-buildkite-plugin-test-job-id:/workdir/coverage - : echo tar" \
-    "cp docker-run-buildkite-plugin-test-job-id:/workdir/coverage * : mkdir \$3 && echo covered > \$3/lcov.info"
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage - : echo tar" \
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage * : mkdir \$4 && echo covered > \$4/lcov.info"
 
   run "$PLUGIN_DIR/hooks/command"
 
@@ -153,9 +153,9 @@ teardown() {
     "create --name docker-run-buildkite-plugin-test-job-id --tty ubuntu:24.04 : true" \
     "start --attach docker-run-buildkite-plugin-test-job-id : true" \
     "${INSPECT_WORKDIR} docker-run-buildkite-plugin-test-job-id : echo /workdir" \
-    "cp docker-run-buildkite-plugin-test-job-id:/workdir/coverage - : echo tar" \
-    "cp docker-run-buildkite-plugin-test-job-id:/workdir/coverage * : echo covered > \$3" \
-    "cp docker-run-buildkite-plugin-test-job-id:/workdir/docs - : echo 'Error response from daemon: Could not find the file /workdir/docs in container docker-run-buildkite-plugin-test-job-id' >&2; exit 1" \
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage - : echo tar" \
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage * : echo covered > \$4" \
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/docs - : echo 'Error response from daemon: Could not find the file /workdir/docs in container docker-run-buildkite-plugin-test-job-id' >&2; exit 1" \
     "cp docker-run-buildkite-plugin-test-job-id:/ - : echo tar"
 
   export TMPDIR="${BATS_TEST_TMPDIR}/tmp"
@@ -176,8 +176,8 @@ teardown() {
     "create --name docker-run-buildkite-plugin-test-job-id --tty ubuntu:24.04 : true" \
     "start --attach docker-run-buildkite-plugin-test-job-id : exit 3" \
     "${INSPECT_WORKDIR} docker-run-buildkite-plugin-test-job-id : echo /workdir" \
-    "cp docker-run-buildkite-plugin-test-job-id:/workdir/coverage - : echo tar" \
-    "cp docker-run-buildkite-plugin-test-job-id:/workdir/coverage * : echo covered > \$3"
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage - : echo tar" \
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage * : echo covered > \$4"
 
   run "$PLUGIN_DIR/hooks/command"
 
@@ -193,7 +193,7 @@ teardown() {
     "create --name docker-run-buildkite-plugin-test-job-id --tty ubuntu:24.04 : true" \
     "start --attach docker-run-buildkite-plugin-test-job-id : true" \
     "${INSPECT_WORKDIR} docker-run-buildkite-plugin-test-job-id : echo /workdir" \
-    "cp docker-run-buildkite-plugin-test-job-id:/workdir/docs - : echo 'Error response from daemon: Could not find the file /workdir/docs in container docker-run-buildkite-plugin-test-job-id' >&2; exit 1" \
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/docs - : echo 'Error response from daemon: Could not find the file /workdir/docs in container docker-run-buildkite-plugin-test-job-id' >&2; exit 1" \
     "cp docker-run-buildkite-plugin-test-job-id:/ - : echo tar"
 
   run "$PLUGIN_DIR/hooks/command"
@@ -213,9 +213,9 @@ teardown() {
     "create --name docker-run-buildkite-plugin-test-job-id --tty ubuntu:24.04 : true" \
     "start --attach docker-run-buildkite-plugin-test-job-id : true" \
     "${INSPECT_WORKDIR} docker-run-buildkite-plugin-test-job-id : echo /workdir" \
-    "cp docker-run-buildkite-plugin-test-job-id:/workdir/coverage - : exit 1" \
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage - : exit 1" \
     "cp docker-run-buildkite-plugin-test-job-id:/ - : exit 1" \
-    "cp docker-run-buildkite-plugin-test-job-id:/workdir/coverage * : echo 'Error response from daemon: No such container: docker-run-buildkite-plugin-test-job-id' >&2; exit 1"
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage * : echo 'Error response from daemon: No such container: docker-run-buildkite-plugin-test-job-id' >&2; exit 1"
 
   run "$PLUGIN_DIR/hooks/command"
 
@@ -232,8 +232,8 @@ teardown() {
     "create --name docker-run-buildkite-plugin-test-job-id --tty ubuntu:24.04 : true" \
     "start --attach docker-run-buildkite-plugin-test-job-id : true" \
     "${INSPECT_WORKDIR} docker-run-buildkite-plugin-test-job-id : echo /workdir" \
-    "cp docker-run-buildkite-plugin-test-job-id:/workdir/coverage - : echo tar" \
-    "cp docker-run-buildkite-plugin-test-job-id:/workdir/coverage * : echo 'Error response from daemon: lstat /workdir/coverage: not a directory' >&2; exit 1"
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage - : echo tar" \
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage * : echo 'Error response from daemon: lstat /workdir/coverage: not a directory' >&2; exit 1"
 
   run "$PLUGIN_DIR/hooks/command"
 
@@ -254,8 +254,8 @@ teardown() {
     "create --name docker-run-buildkite-plugin-test-job-id --tty ubuntu:24.04 : true" \
     "start --attach docker-run-buildkite-plugin-test-job-id : true" \
     "${INSPECT_WORKDIR} docker-run-buildkite-plugin-test-job-id : echo /workdir" \
-    "cp docker-run-buildkite-plugin-test-job-id:/workdir/coverage - : echo tar" \
-    "cp docker-run-buildkite-plugin-test-job-id:/workdir/coverage * : mkdir \$3 && echo partial > \$3/lcov.info; exit 1"
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage - : echo tar" \
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage * : mkdir \$4 && echo partial > \$4/lcov.info; exit 1"
 
   run "$PLUGIN_DIR/hooks/command"
 
@@ -272,10 +272,10 @@ teardown() {
     "create --name docker-run-buildkite-plugin-test-job-id --tty ubuntu:24.04 : true" \
     "start --attach docker-run-buildkite-plugin-test-job-id : true" \
     "${INSPECT_WORKDIR} docker-run-buildkite-plugin-test-job-id : echo /workdir" \
-    "cp docker-run-buildkite-plugin-test-job-id:/workdir/coverage - : echo tar" \
-    "cp docker-run-buildkite-plugin-test-job-id:/workdir/coverage * : echo 'Error response from daemon: lstat /workdir/coverage: not a directory' >&2; exit 1" \
-    "cp docker-run-buildkite-plugin-test-job-id:/workdir/docs - : echo tar" \
-    "cp docker-run-buildkite-plugin-test-job-id:/workdir/docs * : echo documented > \$3"
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage - : echo tar" \
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage * : echo 'Error response from daemon: lstat /workdir/coverage: not a directory' >&2; exit 1" \
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/docs - : echo tar" \
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/docs * : echo documented > \$4"
 
   run "$PLUGIN_DIR/hooks/command"
 
@@ -291,8 +291,8 @@ teardown() {
     "create --name docker-run-buildkite-plugin-test-job-id --tty ubuntu:24.04 : true" \
     "start --attach docker-run-buildkite-plugin-test-job-id : exit 3" \
     "${INSPECT_WORKDIR} docker-run-buildkite-plugin-test-job-id : echo /workdir" \
-    "cp docker-run-buildkite-plugin-test-job-id:/workdir/coverage - : echo tar" \
-    "cp docker-run-buildkite-plugin-test-job-id:/workdir/coverage * : echo 'Error response from daemon: lstat /workdir/coverage: not a directory' >&2; exit 1"
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage - : echo tar" \
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage * : echo 'Error response from daemon: lstat /workdir/coverage: not a directory' >&2; exit 1"
 
   run "$PLUGIN_DIR/hooks/command"
 
@@ -340,8 +340,8 @@ teardown() {
     "create --name docker-run-buildkite-plugin-test-job-id --tty ubuntu:24.04 : true" \
     "start --attach docker-run-buildkite-plugin-test-job-id : true" \
     "${INSPECT_WORKDIR} docker-run-buildkite-plugin-test-job-id : echo /workdir" \
-    "cp docker-run-buildkite-plugin-test-job-id:/workdir/coverage - : echo tar" \
-    "cp docker-run-buildkite-plugin-test-job-id:/workdir/coverage * : mkdir \$3 && echo covered > \$3/lcov.info"
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage - : echo tar" \
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage * : mkdir \$4 && echo covered > \$4/lcov.info"
 
   export TMPDIR="${BATS_TEST_TMPDIR}/tmp"
   mkdir "$TMPDIR"
@@ -365,8 +365,8 @@ teardown() {
     "create --name docker-run-buildkite-plugin-test-job-id --tty ubuntu:24.04 : true" \
     "start --attach docker-run-buildkite-plugin-test-job-id : true" \
     "${INSPECT_WORKDIR} docker-run-buildkite-plugin-test-job-id : echo /workdir" \
-    "cp docker-run-buildkite-plugin-test-job-id:/workdir/coverage - : echo tar" \
-    "cp docker-run-buildkite-plugin-test-job-id:/workdir/coverage * : mkdir \$3 && echo covered > \$3/lcov.info"
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage - : echo tar" \
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage * : mkdir \$4 && echo covered > \$4/lcov.info"
 
   run "$PLUGIN_DIR/hooks/command"
 
@@ -386,8 +386,8 @@ teardown() {
     "create --name docker-run-buildkite-plugin-test-job-id-pre-command --tty ubuntu:24.04 : true" \
     "start --attach docker-run-buildkite-plugin-test-job-id-pre-command : true" \
     "${INSPECT_WORKDIR} docker-run-buildkite-plugin-test-job-id-pre-command : echo /workdir" \
-    "cp docker-run-buildkite-plugin-test-job-id-pre-command:/workdir/coverage - : echo tar" \
-    "cp docker-run-buildkite-plugin-test-job-id-pre-command:/workdir/coverage * : echo covered > \$3"
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id-pre-command:/workdir/coverage - : echo tar" \
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id-pre-command:/workdir/coverage * : echo covered > \$4"
 
   run "$PLUGIN_DIR/hooks/pre-command"
 
@@ -405,8 +405,8 @@ teardown() {
     "create --name docker-run-buildkite-plugin-test-job-id-post-command --tty ubuntu:24.04 : true" \
     "start --attach docker-run-buildkite-plugin-test-job-id-post-command : true" \
     "${INSPECT_WORKDIR} docker-run-buildkite-plugin-test-job-id-post-command : echo /workdir" \
-    "cp docker-run-buildkite-plugin-test-job-id-post-command:/workdir/coverage - : echo tar" \
-    "cp docker-run-buildkite-plugin-test-job-id-post-command:/workdir/coverage * : echo covered > \$3"
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id-post-command:/workdir/coverage - : echo tar" \
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id-post-command:/workdir/coverage * : echo covered > \$4"
 
   run "$PLUGIN_DIR/hooks/post-command"
 
