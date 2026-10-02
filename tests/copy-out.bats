@@ -244,6 +244,25 @@ teardown() {
   [[ ! -e coverage ]]
 }
 
+@test "copy-out leaves to as it was when the copy fails partway" {
+  export BUILDKITE_PLUGIN_DOCKER_RUN_COPY_OUT_0="coverage:coverage"
+  mkdir coverage
+  echo earlier > coverage/lcov.info
+
+  stub docker \
+    "pull ubuntu:24.04 : true" \
+    "create --name docker-run-buildkite-plugin-test-job-id --tty ubuntu:24.04 : true" \
+    "start --attach docker-run-buildkite-plugin-test-job-id : true" \
+    "${INSPECT_WORKDIR} docker-run-buildkite-plugin-test-job-id : echo /workdir" \
+    "cp docker-run-buildkite-plugin-test-job-id:/workdir/coverage - : echo tar" \
+    "cp docker-run-buildkite-plugin-test-job-id:/workdir/coverage * : mkdir \$3 && echo partial > \$3/lcov.info; exit 1"
+
+  run "$PLUGIN_DIR/hooks/command"
+
+  assert_failure 1
+  assert_equal "$(cat coverage/lcov.info)" "earlier"
+}
+
 @test "copy-out still copies the entries after one that failed" {
   export BUILDKITE_PLUGIN_DOCKER_RUN_COPY_OUT_0="coverage:coverage"
   export BUILDKITE_PLUGIN_DOCKER_RUN_COPY_OUT_1="docs:docs"
@@ -324,12 +343,16 @@ teardown() {
     "cp docker-run-buildkite-plugin-test-job-id:/workdir/coverage - : echo tar" \
     "cp docker-run-buildkite-plugin-test-job-id:/workdir/coverage * : mkdir \$3 && echo covered > \$3/lcov.info"
 
+  export TMPDIR="${BATS_TEST_TMPDIR}/tmp"
+  mkdir "$TMPDIR"
+
   run "$PLUGIN_DIR/hooks/command"
 
   assert_success
   assert_line "Skipped /workdir/coverage: coverage already holds the same files"
   # The same directory as before, not an identical one moved into its place.
   assert_equal "$(ls -di coverage)" "$before"
+  assert_equal "$(ls -A "$TMPDIR")" ""
 }
 
 @test "copy-out replaces a to that holds the same file names with different contents" {
