@@ -246,8 +246,8 @@ Each entry is `<from>:<to>`:
   are created, and a leading `./` is accepted. Whatever is already at `to` is
   replaced rather than copied into, so output left over from an earlier job is
   never mixed with this one's or left with this one's nested inside it. Because
-  it is replaced, `to` cannot be absolute, contain `..`, or be the working
-  directory itself.
+  it is replaced, `to` cannot be absolute, have a `.` or `..` component, or be
+  the working directory itself.
 - **The copy runs in the hook that ran the container**, as soon as the
   container exits: the `command` hook by default, or `pre-command` or
   `post-command` under `hook`. The output is therefore on the agent before any

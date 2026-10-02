@@ -507,6 +507,17 @@ teardown() {
   assert_line --partial "+++ Error: The <to> of a copy-out entry must be a path inside the job's working directory."
 }
 
+@test "copy-out to a path with a . component fails before anything is pulled, and says so" {
+  export BUILDKITE_PLUGIN_DOCKER_RUN_COPY_OUT_0="dist:backend/./dist"
+  stub docker
+
+  run "$PLUGIN_DIR/hooks/command"
+
+  assert_failure 1
+  assert_line --partial "+++ Error: The <to> of a copy-out entry must be a path inside the job's working directory."
+  assert_line --partial 'have a "." or ".." component'
+}
+
 # `./` and `/` are the working directory and the root with nothing left once the
 # prefix and the trailing slashes are stripped. Accepted, either would have the
 # copy remove the job's working directory.
