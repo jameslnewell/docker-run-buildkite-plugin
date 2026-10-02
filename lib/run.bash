@@ -31,6 +31,37 @@ if [[ "${BUILDKITE_PLUGIN_DOCKER_RUN_PROPAGATE_DOCKER+set}" == "set" ]]; then
   echo "Use propagate-docker-daemon for access to the host docker daemon, propagate-docker-config for the agent's registry credentials, or both. propagate-docker will be removed in a future release."
 fi
 
+# Checked before anything is pulled or created, so a malformed entry fails in
+# seconds rather than after the command has run.
+COPY_OUT_FROM=()
+COPY_OUT_TO=()
+if plugin_read_list_into_result "BUILDKITE_PLUGIN_DOCKER_RUN_COPY_OUT"; then
+  for entry in "${result[@]}"; do
+    if [[ ! "$entry" =~ ^[^:]+:[^:]+$ ]]; then
+      echo "+++ Error: Each copy-out entry must be \"<from>:<to>\", a path in the container and a path in the job's working directory. Got \"${entry}\"."
+      exit 1
+    fi
+    to="${entry#*:}"
+    to="${to#./}"
+    # A trailing slash says `to` is a directory. It is kept, as a single one, so
+    # that a `from` that turns out to be a file can be refused after the copy.
+    to_slash=""
+    while [[ "$to" == */ ]]; do
+      to="${to%/}"
+      to_slash="/"
+    done
+    # Whatever is at `to` is removed to make way for the copy, so `to` may not
+    # name the working directory itself or anything outside it.
+    if [[ -z "$to" || "$to" == /* || "/${to}/" == */./* || "/${to}/" == */../* ]]; then
+      echo "+++ Error: The <to> of a copy-out entry must be a path inside the job's working directory. Got \"${entry}\"."
+      echo "The copy replaces whatever is at <to>, so it cannot be absolute, have a \".\" or \"..\" component, or be the working directory itself."
+      exit 1
+    fi
+    COPY_OUT_FROM+=("${entry%%:*}")
+    COPY_OUT_TO+=("${to}${to_slash}")
+  done
+fi
+
 # Buildkite treats lines beginning with ---, +++ or ~~~ as log-group headers.
 # The agent *sources* this hook (which sources this file), so `set -x` runs a
 # few shell-nesting levels deep, and bash replicates PS4's first character once
@@ -268,4 +299,30 @@ docker "${DOCKER_ARGS[@]}"
 { set +x; } 2>/dev/null
 
 echo "${_RUN_GROUP} :docker: running"
-docker start --attach "$CONTAINER_NAME"
+# Held rather than left to `set -e`: what a failed command wrote is still copied
+# out, and the hook then exits with the command's own status.
+command_status=0
+docker start --attach "$CONTAINER_NAME" || command_status=$?
+
+if [[ ${#COPY_OUT_FROM[@]} -gt 0 ]]; then
+  echo "${_GROUP} :docker: copying out"
+  copied=true
+  # `docker cp` resolves a relative container path against /, not against the
+  # directory the command ran in, so a relative `from` is resolved here.
+  if container_workdir="$(docker container inspect --format '{{.Config.WorkingDir}}' "$CONTAINER_NAME")"; then
+    for i in "${!COPY_OUT_FROM[@]}"; do
+      from="${COPY_OUT_FROM[$i]}"
+      # An image with no WORKDIR reports "", and its command ran in /.
+      [[ "$from" == /* ]] || from="${container_workdir%/}/${from#./}"
+      plugin_copy_out "$CONTAINER_NAME" "$from" "${COPY_OUT_TO[$i]}" || copied=false
+    done
+  else
+    echo "^^^ +++"
+    echo "Error: there is no container to copy out of"
+    copied=false
+  fi
+  # A failed copy fails the hook, but a command that failed keeps its status.
+  [[ "$copied" == "true" || "$command_status" -ne 0 ]] || command_status=1
+fi
+
+[[ "$command_status" -eq 0 ]] || exit "$command_status"

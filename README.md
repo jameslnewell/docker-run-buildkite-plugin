@@ -6,7 +6,7 @@ Each phase (pull, create, run) is a separate log group in Buildkite, so it's eas
 
 ## Requirements
 
-- The `docker` CLI available to the Buildkite agent. The plugin only uses `docker pull`, `docker create`, `docker start` and `docker rm`.
+- The `docker` CLI available to the Buildkite agent. The plugin only uses `docker pull`, `docker create`, `docker start` and `docker rm`, plus `docker container inspect` and `docker cp` when `copy-out` is set.
 - `propagate-buildkite-agent` additionally requires the agent socket at `/run/buildkite-agent/buildkite-agent.sock`.
 
 ## Usage
@@ -123,6 +123,24 @@ steps:
           propagate-aws: true
 ```
 
+Copy what the command wrote out of the container, for a later plugin to upload. `from` is relative to the container's working directory, and `to` to the job's:
+
+```yaml
+steps:
+  - command: npm test -- --coverage
+    plugins:
+      - jameslnewell/docker-run#v0.18.0:
+          image: my-registry/app:build-42
+          # the app is baked into the image, so there is no checkout to write into
+          mount-checkout: false
+          copy-out:
+            - coverage:coverage
+      - artifacts#v1.10.0:
+          upload: "coverage/**/*"
+```
+
+`copy-out` is not in older releases, so pin one that includes it. See [Copying output out of the container](#copying-output-out-of-the-container).
+
 Bracket the step's own command with setup and teardown by listing the plugin twice — `hook: pre-command` runs before the step, `hook: post-command` after it. In both modes the plugin only runs its own `command`, so the step keeps its command:
 
 ```yaml
@@ -170,6 +188,7 @@ steps:
 | `mount-checkout` | boolean | `true` | Mount the agent checkout directory at the working directory inside the container. |
 | `environment` | array | — | Environment variables as `KEY` (propagated from the agent) or `KEY=VALUE`. |
 | `volumes` | array | — | Volume mounts as `host:container`, or a bare container path for an anonymous volume. Host paths of `.` or beginning with `./` are resolved against `pwd`, so `.:/app` mounts the checkout. Every other host path — including dotfiles like `.env` and named volumes — is passed to Docker unchanged. |
+| `copy-out` | array | — | Paths to copy out of the container once the command exits, as `from:to`. A relative `from` is resolved against the container's working directory. `to` is a path inside the job's working directory, and replaces whatever is already there. See [Copying output out of the container](#copying-output-out-of-the-container). |
 | `propagate-docker-daemon` | boolean | `false` | Give the container access to the host Docker daemon, enabling Docker-from-Docker without `userns:host`. The socket path is derived from `DOCKER_HOST` (default `unix:///var/run/docker.sock`); for a TCP daemon there is no socket to mount, so `DOCKER_HOST` is passed through instead. |
 | `propagate-docker-config` | boolean | `false` | Give the container the agent's registry credentials, so it can pull and push without logging in first. A readable copy of the agent's Docker config is mounted at `/run/docker-config/config.json`, with `DOCKER_CONFIG` naming that directory. See [The propagated Docker config](#the-propagated-docker-config). |
 | `propagate-docker` | boolean | `false` | **Deprecated.** Means `propagate-docker-daemon` and `propagate-docker-config` at once. Warns at runtime, and setting it to `true` alongside either of them is an error. See [Migrating from `propagate-docker`](#migrating-from-propagate-docker). |
@@ -206,6 +225,52 @@ credentials the agent goes on using.
   credential helper (`credsStore` or `credHelpers`, as `docker-credential-ecr-login`
   setups do) needs that helper binary present in the image as well — a
   distroless image has no helpers and fails with `executable file not found`.
+
+### Copying output out of the container
+
+`copy-out` copies files or directories out of the stopped container into the
+job's working directory, where a later plugin or hook can pick them up. It is
+for steps that do not mount the checkout — an image with the application baked
+in — and for output that a bind mount cannot carry: a tool that removes and
+recreates its output directory cannot remove a mount point.
+
+Each entry is `<from>:<to>`:
+
+- **`from` is a path in the container.** If it is a symlink, what it points to
+  is copied. A relative path is resolved against the container's working
+  directory: the `workdir` option, `mount-checkout`'s `/workdir`, or the
+  image's `WORKDIR`. An image that sets none ran its command in `/`, so that is
+  what `from` is resolved against. An absolute path is used as is. (`docker cp`
+  on its own resolves a relative path against `/`.)
+- **`to` is a path inside the job's working directory.** Its parent directories
+  are created, and a leading `./` is accepted. A trailing slash says `to` is a
+  directory, so a `from` that turns out to be a file fails the step: to put a
+  file in a directory, name the file in `to`. Whatever is already at `to` is
+  replaced rather than copied into, so output left over from an earlier job is
+  never mixed with this one's or left with this one's nested inside it. Because
+  it is replaced, `to` cannot be absolute, have a `.` or `..` component, or be
+  the working directory itself.
+- **The copy runs in the hook that ran the container**, as soon as the
+  container exits: the `command` hook by default, or `pre-command` or
+  `post-command` under `hook`. From the `command` and `pre-command` hooks, the
+  output is on the agent before any `post-command` hook runs, whatever order
+  the agent runs them in. Under `hook: post-command` the copy is itself a
+  `post-command` hook, so a plugin that consumes the output has to run its
+  `post-command` after this one. Buildkite agent v4 runs `post-command` hooks
+  in reverse plugin order, which means listing that plugin before this one.
+- **The hook exits with the command's status**, and the copy happens whether
+  the command passed or failed, so a failing test run still hands over its
+  report.
+- **A `from` the container does not have is logged and skipped.** Any other
+  failure to copy fails the hook. A failed command keeps its own exit status.
+- **A `to` that already holds the same files is left in place.** With the
+  default `mount-checkout`, the container's `/workdir/coverage` is the agent's
+  `coverage`, so `coverage:coverage` finds the output already there and says so
+  in the log. The same `copy-out` therefore works whether or not a step mounts
+  the checkout.
+
+An entry that is not exactly `<from>:<to>` fails the hook before the image is
+pulled.
 
 ### Commands and shells
 
@@ -258,7 +323,8 @@ The config half no longer mounts `config.json` at `/root/.docker/config.json`; i
 1. **Pull** — `docker pull <image>`
 2. **Create** — `docker create` with the configured workdir, mounts, environment and command. A TTY is always allocated, so tools that colourise their output when attached to a terminal keep doing so in the build log.
 3. **Run** — `docker start --attach`, streaming the container's output into the step log
-4. **Cleanup** — the `pre-exit` hook always runs `docker rm -f`, and removes the temporary Docker config directory created by `propagate-docker-config`
+4. **Copy out** — only with `copy-out`: `docker container inspect` for the container's working directory, then `docker cp` for each entry
+5. **Cleanup** — the `pre-exit` hook always runs `docker rm -f`, and removes the temporary Docker config directory created by `propagate-docker-config` and any scratch directory a killed `copy-out` left in the working directory
 
 Each phase is its own log group, so you can fold and expand them independently and see exactly where time is spent.
 
