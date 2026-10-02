@@ -64,6 +64,11 @@ plugin_copy_out() {
   local to="$3"
   local dest scratch
   local copy_status=0
+  local to_is_directory=false
+  if [[ "$to" == */ ]]; then
+    to_is_directory=true
+    to="${to%/}"
+  fi
   dest="$(pwd)/${to}"
 
   # `docker cp` cannot be asked whether a path exists, and how it words a
@@ -105,6 +110,16 @@ plugin_copy_out() {
   # anything of that name inside the copy is the scratch directory itself.
   if [[ "$copy_status" -eq 0 ]]; then
     find "${scratch}/copy" -name "${scratch##*/}" -prune -exec rm -rf {} \; || copy_status=$?
+  fi
+
+  # `to` is replaced by the copy, never copied into. So a file cannot go to a
+  # `to` written as a directory: it would replace that directory with a file of
+  # its name, where `cp` would have put the file inside it.
+  if [[ "$copy_status" -eq 0 && "$to_is_directory" == "true" && ! -d "${scratch}/copy" ]]; then
+    rm -rf "$scratch"
+    echo "^^^ +++"
+    echo "Error: ${to}/ ends in / but ${from} is a file. Name the file in <to>, as in ${to}/${from##*/}"
+    return 1
   fi
 
   # A `to` that already holds the same files is left alone. That is the mounted

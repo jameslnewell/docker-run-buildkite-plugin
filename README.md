@@ -243,7 +243,9 @@ Each entry is `<from>:<to>`:
   what `from` is resolved against. An absolute path is used as is. (`docker cp`
   on its own resolves a relative path against `/`.)
 - **`to` is a path inside the job's working directory.** Its parent directories
-  are created, and a leading `./` is accepted. Whatever is already at `to` is
+  are created, and a leading `./` is accepted. A trailing slash says `to` is a
+  directory, so a `from` that turns out to be a file fails the step: to put a
+  file in a directory, name the file in `to`. Whatever is already at `to` is
   replaced rather than copied into, so output left over from an earlier job is
   never mixed with this one's or left with this one's nested inside it. Because
   it is replaced, `to` cannot be absolute, have a `.` or `..` component, or be

@@ -95,13 +95,36 @@ teardown() {
     "start --attach docker-run-buildkite-plugin-test-job-id : true" \
     "${INSPECT_WORKDIR} docker-run-buildkite-plugin-test-job-id : echo /workdir" \
     "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage - : echo tar" \
-    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage * : echo covered > \$4"
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage * : mkdir \$4 && echo covered > \$4/lcov.info"
 
   run "$PLUGIN_DIR/hooks/command"
 
   assert_success
   assert_line "Copied /workdir/coverage to backend/coverage"
-  assert_equal "$(cat backend/coverage)" "covered"
+  assert_equal "$(cat backend/coverage/lcov.info)" "covered"
+}
+
+@test "copy-out refuses to put a file at a to written as a directory" {
+  # `to` is replaced, never copied into, so the file would take the place of the
+  # directory and everything in it, where `cp` would have put the file inside.
+  export BUILDKITE_PLUGIN_DOCKER_RUN_COPY_OUT_0="/out/junit.xml:test-results/"
+  mkdir test-results
+  echo earlier > test-results/earlier.xml
+
+  stub docker \
+    "pull ubuntu:24.04 : true" \
+    "create --name docker-run-buildkite-plugin-test-job-id --tty ubuntu:24.04 : true" \
+    "start --attach docker-run-buildkite-plugin-test-job-id : true" \
+    "${INSPECT_WORKDIR} docker-run-buildkite-plugin-test-job-id : echo /workdir" \
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/out/junit.xml - : echo tar" \
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/out/junit.xml * : echo results > \$4"
+
+  run "$PLUGIN_DIR/hooks/command"
+
+  assert_failure 1
+  assert_line "Error: test-results/ ends in / but /out/junit.xml is a file. Name the file in <to>, as in test-results/junit.xml"
+  assert_equal "$(ls -A)" "test-results"
+  assert_equal "$(ls -A test-results)" "earlier.xml"
 }
 
 @test "copy-out copies every entry" {

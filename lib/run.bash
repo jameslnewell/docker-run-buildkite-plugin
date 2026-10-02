@@ -43,8 +43,12 @@ if plugin_read_list_into_result "BUILDKITE_PLUGIN_DOCKER_RUN_COPY_OUT"; then
     fi
     to="${entry#*:}"
     to="${to#./}"
+    # A trailing slash says `to` is a directory. It is kept, as a single one, so
+    # that a `from` that turns out to be a file can be refused after the copy.
+    to_slash=""
     while [[ "$to" == */ ]]; do
       to="${to%/}"
+      to_slash="/"
     done
     # Whatever is at `to` is removed to make way for the copy, so `to` may not
     # name the working directory itself or anything outside it.
@@ -54,7 +58,7 @@ if plugin_read_list_into_result "BUILDKITE_PLUGIN_DOCKER_RUN_COPY_OUT"; then
       exit 1
     fi
     COPY_OUT_FROM+=("${entry%%:*}")
-    COPY_OUT_TO+=("$to")
+    COPY_OUT_TO+=("${to}${to_slash}")
   done
 fi
 
