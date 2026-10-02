@@ -145,6 +145,24 @@ teardown() {
   assert_equal "$(ls -A coverage)" "lcov.info"
 }
 
+@test "copy-out stages the copy inside the job's working directory" {
+  # On the destination's filesystem, so that the move into place is a rename.
+  export BUILDKITE_PLUGIN_DOCKER_RUN_COPY_OUT_0="coverage:coverage"
+
+  stub docker \
+    "pull ubuntu:24.04 : true" \
+    "create --name docker-run-buildkite-plugin-test-job-id --tty ubuntu:24.04 : true" \
+    "start --attach docker-run-buildkite-plugin-test-job-id : true" \
+    "${INSPECT_WORKDIR} docker-run-buildkite-plugin-test-job-id : echo /workdir" \
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage - : echo tar" \
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage * : echo \$4 > \$4"
+
+  run "$PLUGIN_DIR/hooks/command"
+
+  assert_success
+  assert_regex "$(cat coverage)" "^${PWD}/\.docker-run-copy-out\.[A-Za-z0-9]+/copy$"
+}
+
 @test "copy-out leaves nothing of its own in the job's working directory" {
   # The copy is staged in a scratch directory inside the job's working directory,
   # which has to be gone whether the entry was copied, skipped or failed.
