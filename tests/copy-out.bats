@@ -265,6 +265,30 @@ teardown() {
   assert_equal "$(cat coverage/lcov.info)" "earlier"
 }
 
+@test "copy-out keeps the command's exit status when it has nowhere to stage a copy" {
+  # A working directory that cannot be written to is a failed copy like any
+  # other: it must not end the hook on the spot with mktemp's status.
+  export BUILDKITE_PLUGIN_DOCKER_RUN_COPY_OUT_0="coverage:coverage"
+  export BUILDKITE_PLUGIN_DOCKER_RUN_COPY_OUT_1="docs:docs"
+  mkdir "${BATS_TEST_TMPDIR}/shims"
+  printf '#!/bin/sh\necho "mktemp: failed to create directory" >&2\nexit 1\n' > "${BATS_TEST_TMPDIR}/shims/mktemp"
+  chmod +x "${BATS_TEST_TMPDIR}/shims/mktemp"
+
+  stub docker \
+    "pull ubuntu:24.04 : true" \
+    "create --name docker-run-buildkite-plugin-test-job-id --tty ubuntu:24.04 : true" \
+    "start --attach docker-run-buildkite-plugin-test-job-id : exit 3" \
+    "${INSPECT_WORKDIR} docker-run-buildkite-plugin-test-job-id : echo /workdir" \
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage - : echo tar" \
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/docs - : echo tar"
+
+  run env PATH="${BATS_TEST_TMPDIR}/shims:${PATH}" "$PLUGIN_DIR/hooks/command"
+
+  assert_failure 3
+  assert_line "Error: could not copy /workdir/coverage out of the container to coverage"
+  assert_line "Error: could not copy /workdir/docs out of the container to docs"
+}
+
 @test "copy-out still copies the entries after one that failed" {
   export BUILDKITE_PLUGIN_DOCKER_RUN_COPY_OUT_0="coverage:coverage"
   export BUILDKITE_PLUGIN_DOCKER_RUN_COPY_OUT_1="docs:docs"

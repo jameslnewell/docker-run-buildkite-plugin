@@ -87,7 +87,7 @@ plugin_copy_out() {
   # would leave `to` half replaced.
   if ! scratch="$(mktemp -d "$(pwd)/.docker-run-copy-out.XXXXXX")"; then
     echo "^^^ +++"
-    echo "Error: could not create a directory to copy ${from} into"
+    echo "Error: could not copy ${from} out of the container to ${to}"
     return 1
   fi
 
