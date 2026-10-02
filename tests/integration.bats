@@ -293,6 +293,24 @@ in_job_dir() {
   [[ "$(cat reports/coverage/lcov.info)" == "covered" ]]
 }
 
+@test "integration: copy-out of a from that contains the working directory leaves its own scratch copy out" {
+  skip_if_no_docker
+  in_job_dir
+
+  # /workdir is the job's working directory, so a scratch copy made inside the
+  # working directory would be part of what is being copied.
+  unset BUILDKITE_PLUGIN_DOCKER_RUN_MOUNT_CHECKOUT
+  mounted_job_dir="$PWD"
+  export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_2="echo built > app.js"
+  export BUILDKITE_PLUGIN_DOCKER_RUN_COPY_OUT_0=".:snapshot"
+
+  run bash "$PLUGIN_PATH/hooks/command"
+
+  [[ $status -eq 0 ]]
+  [[ "$(ls -A snapshot)" == "app.js" ]]
+  [[ "$(cat snapshot/app.js)" == "built" ]]
+}
+
 @test "integration: copy-out copies out of a volume mounted inside the mounted checkout" {
   skip_if_no_docker
   in_job_dir
