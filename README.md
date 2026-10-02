@@ -250,11 +250,12 @@ Each entry is `<from>:<to>`:
   the working directory itself.
 - **The copy runs in the hook that ran the container**, as soon as the
   container exits: the `command` hook by default, or `pre-command` or
-  `post-command` under `hook`. The output is therefore on the agent before any
-  `post-command` hook runs, whatever order the agent runs them in. Buildkite
-  agent v4 runs `post-command` hooks in reverse plugin order, so a plugin listed
-  after this one, as `artifacts` is above, runs its `post-command` before this
-  plugin's.
+  `post-command` under `hook`. From the `command` and `pre-command` hooks, the
+  output is on the agent before any `post-command` hook runs, whatever order
+  the agent runs them in. Under `hook: post-command` the copy is itself a
+  `post-command` hook, so a plugin that consumes the output has to run its
+  `post-command` after this one. Buildkite agent v4 runs `post-command` hooks
+  in reverse plugin order, which means listing that plugin before this one.
 - **The hook exits with the command's status**, and the copy happens whether
   the command passed or failed, so a failing test run still hands over its
   report.
