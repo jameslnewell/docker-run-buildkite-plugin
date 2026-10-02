@@ -305,13 +305,12 @@ if [[ ${#COPY_OUT_FROM[@]} -gt 0 ]]; then
   copied=true
   # `docker cp` resolves a relative container path against /, not against the
   # directory the command ran in, so a relative `from` is resolved here.
-  if container_workdir="$(docker container inspect --format '{{.Config.WorkingDir}}' "$CONTAINER_NAME")" \
-    && container_mounts="$(docker container inspect --format '{{range .Mounts}}{{.Type}}{{"\t"}}{{.Destination}}{{"\t"}}{{.Source}}{{"\n"}}{{end}}' "$CONTAINER_NAME")"; then
+  if container_workdir="$(docker container inspect --format '{{.Config.WorkingDir}}' "$CONTAINER_NAME")"; then
     for i in "${!COPY_OUT_FROM[@]}"; do
       from="${COPY_OUT_FROM[$i]}"
       # An image with no WORKDIR reports "", and its command ran in /.
       [[ "$from" == /* ]] || from="${container_workdir%/}/${from#./}"
-      plugin_copy_out "$CONTAINER_NAME" "$from" "${COPY_OUT_TO[$i]}" "$container_mounts" || copied=false
+      plugin_copy_out "$CONTAINER_NAME" "$from" "${COPY_OUT_TO[$i]}" || copied=false
     done
   else
     echo "^^^ +++"

@@ -50,31 +50,6 @@ plugin_read_list_into_result() {
   [[ ${#result[@]} -gt 0 ]]
 }
 
-# Prints the agent's path for a container path that a bind mount puts on the
-# agent, and an empty line for any other path. `mounts` is the container's
-# mounts, one "<type>\t<destination>\t<source>" per line.
-#
-# The deepest mount containing the path decides. A volume mounted inside the
-# checkout (`/workdir/node_modules`) hides the checkout's own directory of that
-# name, so a path under it is not the agent's.
-plugin_bind_mounted_path() {
-  local path="$1"
-  local mounts="$2"
-  local type destination source
-  local deepest=""
-  local mounted=""
-  while IFS=$'\t' read -r type destination source; do
-    [[ -n "$type" ]] || continue
-    destination="${destination%/}"
-    [[ "$path" == "$destination" || "$path" == "${destination}/"* ]] || continue
-    [[ ${#destination} -ge ${#deepest} ]] || continue
-    deepest="$destination"
-    mounted=""
-    [[ "$type" != "bind" ]] || mounted="${source%/}${path#"$destination"}"
-  done <<< "$mounts"
-  printf '%s\n' "$mounted"
-}
-
 # Copies one path out of a stopped container to `to` in the job's working
 # directory, replacing whatever is there. A `from` the container does not have
 # is logged and skipped; any other failure returns non-zero.
@@ -82,8 +57,7 @@ plugin_copy_out() {
   local container="$1"
   local from="$2"
   local to="$3"
-  local mounts="$4"
-  local dest mounted scratch
+  local dest scratch
   local copy_status=0
   dest="$(pwd)/${to}"
 
@@ -92,17 +66,6 @@ plugin_copy_out() {
   # stream answers it: a byte only arrives when the path is there.
   if [[ -z "$(docker cp "${container}:${from}" - 2>/dev/null | head -c 1)" ]]; then
     echo "Skipped ${from}: not found in the container"
-    return 0
-  fi
-
-  # With the checkout mounted over the container's working directory, `from` and
-  # `to` can be one directory, and the output is already where it was asked for.
-  # Replacing it with a copy of itself would only fail on a daemon without
-  # user-namespace remapping, where the container's files are root's and the
-  # agent cannot remove them.
-  mounted="$(plugin_bind_mounted_path "$from" "$mounts")"
-  if [[ -n "$mounted" && "$mounted" -ef "$dest" ]]; then
-    echo "Skipped ${from}: already at ${to} through a mount"
     return 0
   fi
 
@@ -121,6 +84,16 @@ plugin_copy_out() {
   set -x
   docker cp "${container}:${from}" "${scratch}/copy" || { copy_status=$?; } 2>/dev/null
   { set +x; } 2>/dev/null
+
+  # A `to` that already holds the same files is left alone. That is the mounted
+  # checkout: `from` and `to` are then one directory, which the container wrote
+  # as root unless told otherwise, and an agent that is not root could not
+  # remove it to put a copy of itself in its place.
+  if [[ "$copy_status" -eq 0 ]] && diff -r "${scratch}/copy" "$dest" >/dev/null 2>&1; then
+    rm -rf "$scratch"
+    echo "Skipped ${from}: ${to} already holds the same files"
+    return 0
+  fi
 
   if [[ "$copy_status" -eq 0 ]]; then
     { mkdir -p "$(dirname "$dest")" && rm -rf "$dest" && mv "${scratch}/copy" "$dest"; } || copy_status=$?

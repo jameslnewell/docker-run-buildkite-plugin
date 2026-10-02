@@ -259,10 +259,11 @@ Each entry is `<from>:<to>`:
   report.
 - **A `from` the container does not have is logged and skipped.** Any other
   failure to copy fails the hook. A failed command keeps its own exit status.
-- **Output that a mount already puts at `to` is left where it is.** With the
+- **A `to` that already holds the same files is left in place.** With the
   default `mount-checkout`, the container's `/workdir/coverage` is the agent's
-  `coverage`, so `coverage:coverage` has nothing to copy and says so in the log.
-  The same `copy-out` therefore works whether or not a step mounts the checkout.
+  `coverage`, so `coverage:coverage` finds the output already there and says so
+  in the log. The same `copy-out` therefore works whether or not a step mounts
+  the checkout.
 
 An entry that is not exactly `<from>:<to>` fails the hook before the image is
 pulled.
@@ -318,7 +319,7 @@ The config half no longer mounts `config.json` at `/root/.docker/config.json`; i
 1. **Pull** — `docker pull <image>`
 2. **Create** — `docker create` with the configured workdir, mounts, environment and command. A TTY is always allocated, so tools that colourise their output when attached to a terminal keep doing so in the build log.
 3. **Run** — `docker start --attach`, streaming the container's output into the step log
-4. **Copy out** — only with `copy-out`: `docker container inspect` for the container's working directory and mounts, then `docker cp` for each entry
+4. **Copy out** — only with `copy-out`: `docker container inspect` for the container's working directory, then `docker cp` for each entry
 5. **Cleanup** — the `pre-exit` hook always runs `docker rm -f`, and removes the temporary Docker config directory created by `propagate-docker-config`
 
 Each phase is its own log group, so you can fold and expand them independently and see exactly where time is spent.

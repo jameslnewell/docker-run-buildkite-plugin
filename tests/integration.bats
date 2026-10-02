@@ -255,14 +255,14 @@ in_job_dir() {
   [[ "$(cat backend/coverage/lcov.info)" == "covered" ]]
 }
 
-@test "integration: copy-out leaves the output where it is when the mounted checkout already puts it at to" {
+@test "integration: copy-out leaves to in place when the mounted checkout already put the output there" {
   skip_if_no_docker
   in_job_dir
 
   # The default mount-checkout puts the job's working directory at /workdir, so
   # the container's /workdir/coverage is the agent's coverage. On a daemon
   # without user-namespace remapping the container's files are root's, and
-  # replacing them with a copy of themselves would fail.
+  # the agent could not remove them to put the copy in their place.
   unset BUILDKITE_PLUGIN_DOCKER_RUN_MOUNT_CHECKOUT
   mounted_job_dir="$PWD"
   export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_2="mkdir coverage && echo covered > coverage/lcov.info"
@@ -271,7 +271,7 @@ in_job_dir() {
   run bash "$PLUGIN_PATH/hooks/command"
 
   [[ $status -eq 0 ]]
-  [[ "$output" == *"Skipped /workdir/coverage: already at coverage through a mount"* ]]
+  [[ "$output" == *"Skipped /workdir/coverage: coverage already holds the same files"* ]]
   [[ "$(ls -A)" == "coverage" ]]
   [[ "$(ls -A coverage)" == "lcov.info" ]]
   [[ "$(cat coverage/lcov.info)" == "covered" ]]
@@ -298,7 +298,7 @@ in_job_dir() {
   in_job_dir
 
   # /workdir/node_modules is the volume, not the checkout's directory of that
-  # name, so the same path on both sides is still a real copy.
+  # name, so the same path on both sides still has different contents.
   unset BUILDKITE_PLUGIN_DOCKER_RUN_MOUNT_CHECKOUT
   mounted_job_dir="$PWD"
   export BUILDKITE_PLUGIN_DOCKER_RUN_VOLUMES_0="/workdir/node_modules"
