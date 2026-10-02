@@ -322,7 +322,7 @@ The config half no longer mounts `config.json` at `/root/.docker/config.json`; i
 2. **Create** — `docker create` with the configured workdir, mounts, environment and command. A TTY is always allocated, so tools that colourise their output when attached to a terminal keep doing so in the build log.
 3. **Run** — `docker start --attach`, streaming the container's output into the step log
 4. **Copy out** — only with `copy-out`: `docker container inspect` for the container's working directory, then `docker cp` for each entry
-5. **Cleanup** — the `pre-exit` hook always runs `docker rm -f`, and removes the temporary Docker config directory created by `propagate-docker-config`
+5. **Cleanup** — the `pre-exit` hook always runs `docker rm -f`, and removes the temporary Docker config directory created by `propagate-docker-config` and any scratch directory a killed `copy-out` left in the working directory
 
 Each phase is its own log group, so you can fold and expand them independently and see exactly where time is spent.
 

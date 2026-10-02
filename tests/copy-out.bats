@@ -500,6 +500,35 @@ teardown() {
   assert_equal "$(cat coverage)" "covered"
 }
 
+# --- pre-exit clears up after a hook that was killed mid-copy ---
+
+@test "pre-exit removes a scratch directory a killed hook left in the working directory" {
+  export BUILDKITE_PLUGIN_DOCKER_RUN_COPY_OUT_0="coverage:coverage"
+  mkdir -p .docker-run-copy-out.zqejq3/copy
+  echo partial > .docker-run-copy-out.zqejq3/copy/lcov.info
+  echo kept > .env
+
+  stub docker \
+    "rm -f docker-run-buildkite-plugin-test-job-id : true"
+
+  run "$PLUGIN_DIR/hooks/pre-exit"
+
+  assert_success
+  assert_equal "$(ls -A)" ".env"
+}
+
+@test "pre-exit leaves the working directory alone without copy-out" {
+  mkdir .docker-run-copy-out.zqejq3
+
+  stub docker \
+    "rm -f docker-run-buildkite-plugin-test-job-id : true"
+
+  run "$PLUGIN_DIR/hooks/pre-exit"
+
+  assert_success
+  assert_equal "$(ls -A)" ".docker-run-copy-out.zqejq3"
+}
+
 # --- malformed entries fail before the container is created ---
 #
 # Each stubs docker with an empty plan, so any docker call at all fails the test.

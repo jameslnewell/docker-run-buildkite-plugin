@@ -50,6 +50,11 @@ plugin_read_list_into_result() {
   [[ ${#result[@]} -gt 0 ]]
 }
 
+# What copy-out's scratch directories in the job's working directory are named
+# before mktemp's suffix. The run hook creates them and pre-exit removes any that
+# a killed hook left behind.
+COPY_OUT_SCRATCH=".docker-run-copy-out"
+
 # Copies one path out of a stopped container to `to` in the job's working
 # directory, replacing whatever is there. A `from` the container does not have
 # is logged and skipped; any other failure returns non-zero.
@@ -85,7 +90,7 @@ plugin_copy_out() {
   # system's temporary one, so the move is a rename. /tmp is often a tmpfs too
   # small for the output, and a move across filesystems that failed part-way
   # would leave `to` half replaced.
-  if ! scratch="$(mktemp -d "$(pwd)/.docker-run-copy-out.XXXXXX")"; then
+  if ! scratch="$(mktemp -d "$(pwd)/${COPY_OUT_SCRATCH}.XXXXXX")"; then
     echo "^^^ +++"
     echo "Error: could not copy ${from} out of the container to ${to}"
     return 1
