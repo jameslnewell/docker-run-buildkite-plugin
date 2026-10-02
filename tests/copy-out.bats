@@ -140,7 +140,7 @@ teardown() {
   assert_equal "$(ls -A coverage)" "lcov.info"
 }
 
-@test "copy-out leaves nothing but the copy in the job's working directory" {
+@test "copy-out leaves nothing but the copy behind, in the working directory or the temp directory" {
   export BUILDKITE_PLUGIN_DOCKER_RUN_COPY_OUT_0="coverage:coverage"
   export BUILDKITE_PLUGIN_DOCKER_RUN_COPY_OUT_1="docs:docs"
 
@@ -153,10 +153,14 @@ teardown() {
     "cp docker-run-buildkite-plugin-test-job-id:/workdir/coverage * : echo covered > \$3" \
     "cp docker-run-buildkite-plugin-test-job-id:/workdir/docs * : echo 'Error response from daemon: Could not find the file /workdir/docs in container docker-run-buildkite-plugin-test-job-id' >&2; exit 1"
 
+  export TMPDIR="${BATS_TEST_TMPDIR}/tmp"
+  mkdir "$TMPDIR"
+
   run "$PLUGIN_DIR/hooks/command"
 
   assert_success
   assert_equal "$(ls -A)" "coverage"
+  assert_equal "$(ls -A "$TMPDIR")" ""
 }
 
 @test "copy-out copies what a failed command wrote and exits with the command's status" {

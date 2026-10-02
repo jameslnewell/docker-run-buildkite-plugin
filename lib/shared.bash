@@ -100,15 +100,15 @@ plugin_copy_out() {
   # The copy lands in a scratch directory and is then moved into place:
   # `docker cp` into a directory that already exists nests the copy inside it,
   # and removing `to` first would remove the source whenever a mount puts one
-  # inside the other. The scratch directory is in the working directory rather
-  # than the system temp dir so that the move is a rename, and so that one
-  # stranded by a killed job is cleared by the next checkout.
-  if ! scratch="$(mktemp -d "$(pwd)/.docker-run-copy-out.XXXXXX")"; then
+  # inside the other. The scratch directory is in the system temp dir rather
+  # than the working directory, so that a `from` that contains the working
+  # directory through a mount cannot include the scratch copy in itself.
+  if ! scratch="$(mktemp -d "${TMPDIR:-/tmp}/docker-run-buildkite-plugin.XXXXXX")"; then
     echo "+++ Error: Could not create a directory to copy ${from} into."
     return 1
   fi
 
-  if ! error="$(docker cp "${container}:${from}" "${scratch}/out" 2>&1)"; then
+  if ! error="$(docker cp "${container}:${from}" "${scratch}/copy" 2>&1)"; then
     rm -rf "$scratch"
     # The daemon's wording, then the Docker 20.10 CLI's.
     if [[ "$error" == *"Could not find the file"* || "$error" == *"No such container:path"* ]]; then
@@ -120,7 +120,7 @@ plugin_copy_out() {
     return 1
   fi
 
-  if ! { mkdir -p "$(dirname "$dest")" && rm -rf "$dest" && mv "${scratch}/out" "$dest"; }; then
+  if ! { mkdir -p "$(dirname "$dest")" && rm -rf "$dest" && mv "${scratch}/copy" "$dest"; }; then
     rm -rf "$scratch"
     echo "+++ Error: Could not move the copy of ${from} to ${to}."
     return 1
