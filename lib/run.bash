@@ -314,7 +314,8 @@ if [[ ${#COPY_OUT_FROM[@]} -gt 0 ]]; then
       plugin_copy_out "$CONTAINER_NAME" "$from" "${COPY_OUT_TO[$i]}" "$container_mounts" || copied=false
     done
   else
-    echo "+++ Error: Could not read the container's working directory and mounts."
+    echo "^^^ +++"
+    echo "Error: there is no container to copy out of"
     copied=false
   fi
   # A failed copy fails the hook, but a command that failed keeps its status.

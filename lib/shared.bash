@@ -83,8 +83,17 @@ plugin_copy_out() {
   local from="$2"
   local to="$3"
   local mounts="$4"
-  local dest mounted scratch error
+  local dest mounted scratch
+  local copy_status=0
   dest="$(pwd)/${to}"
+
+  # `docker cp` cannot be asked whether a path exists, and how it words a
+  # missing one varies between Docker versions. Asking for the path as a tar
+  # stream answers it: a byte only arrives when the path is there.
+  if [[ -z "$(docker cp "${container}:${from}" - 2>/dev/null | head -c 1)" ]]; then
+    echo "Skipped ${from}: not found in the container"
+    return 0
+  fi
 
   # With the checkout mounted over the container's working directory, `from` and
   # `to` can be one directory, and the output is already where it was asked for.
@@ -104,28 +113,24 @@ plugin_copy_out() {
   # than the working directory, so that a `from` that contains the working
   # directory through a mount cannot include the scratch copy in itself.
   if ! scratch="$(mktemp -d "${TMPDIR:-/tmp}/docker-run-buildkite-plugin.XXXXXX")"; then
-    echo "+++ Error: Could not create a directory to copy ${from} into."
+    echo "^^^ +++"
+    echo "Error: could not create a directory to copy ${from} into"
     return 1
   fi
 
-  if ! error="$(docker cp "${container}:${from}" "${scratch}/copy" 2>&1)"; then
-    rm -rf "$scratch"
-    # The daemon's wording, then the Docker 20.10 CLI's.
-    if [[ "$error" == *"Could not find the file"* || "$error" == *"No such container:path"* ]]; then
-      echo "Skipped ${from}: not found in the container"
-      return 0
-    fi
-    echo "+++ Error: Could not copy ${from} out of the container."
-    printf '%s\n' "$error"
-    return 1
-  fi
+  set -x
+  docker cp "${container}:${from}" "${scratch}/copy" || { copy_status=$?; } 2>/dev/null
+  { set +x; } 2>/dev/null
 
-  if ! { mkdir -p "$(dirname "$dest")" && rm -rf "$dest" && mv "${scratch}/copy" "$dest"; }; then
-    rm -rf "$scratch"
-    echo "+++ Error: Could not move the copy of ${from} to ${to}."
-    return 1
+  if [[ "$copy_status" -eq 0 ]]; then
+    { mkdir -p "$(dirname "$dest")" && rm -rf "$dest" && mv "${scratch}/copy" "$dest"; } || copy_status=$?
   fi
-
   rm -rf "$scratch"
+
+  if [[ "$copy_status" -ne 0 ]]; then
+    echo "^^^ +++"
+    echo "Error: could not copy ${from} out of the container to ${to}"
+    return 1
+  fi
   echo "Copied ${from} to ${to}"
 }

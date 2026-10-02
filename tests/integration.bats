@@ -341,7 +341,7 @@ in_job_dir() {
   run bash "$PLUGIN_PATH/hooks/command"
 
   [[ $status -eq 1 ]]
-  [[ "$output" == *"+++ Error: Could not move the copy of /workdir/coverage to backend/coverage."* ]]
+  [[ "$output" == *"Error: could not copy /workdir/coverage out of the container to backend/coverage"* ]]
   [[ "$(ls -A)" == "backend" ]]
 }
 
