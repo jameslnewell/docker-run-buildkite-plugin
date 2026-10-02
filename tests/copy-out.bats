@@ -144,9 +144,12 @@ teardown() {
   assert_equal "$(ls -A coverage)" "lcov.info"
 }
 
-@test "copy-out leaves nothing but the copy behind, in the working directory or the temp directory" {
+@test "copy-out leaves nothing of its own in the job's working directory" {
+  # The copy is staged in a scratch directory inside the job's working directory,
+  # which has to be gone whether the entry was copied, skipped or failed.
   export BUILDKITE_PLUGIN_DOCKER_RUN_COPY_OUT_0="coverage:coverage"
   export BUILDKITE_PLUGIN_DOCKER_RUN_COPY_OUT_1="docs:docs"
+  export BUILDKITE_PLUGIN_DOCKER_RUN_COPY_OUT_2="dist:dist"
 
   stub docker \
     "pull ubuntu:24.04 : true" \
@@ -155,17 +158,15 @@ teardown() {
     "${INSPECT_WORKDIR} docker-run-buildkite-plugin-test-job-id : echo /workdir" \
     "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage - : echo tar" \
     "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage * : echo covered > \$4" \
-    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/docs - : echo 'Error response from daemon: Could not find the file /workdir/docs in container docker-run-buildkite-plugin-test-job-id' >&2; exit 1" \
-    "cp docker-run-buildkite-plugin-test-job-id:/ - : echo tar"
-
-  export TMPDIR="${BATS_TEST_TMPDIR}/tmp"
-  mkdir "$TMPDIR"
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/docs - : exit 1" \
+    "cp docker-run-buildkite-plugin-test-job-id:/ - : echo tar" \
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/dist - : echo tar" \
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/dist * : mkdir \$4 && exit 1"
 
   run "$PLUGIN_DIR/hooks/command"
 
-  assert_success
+  assert_failure 1
   assert_equal "$(ls -A)" "coverage"
-  assert_equal "$(ls -A "$TMPDIR")" ""
 }
 
 @test "copy-out copies what a failed command wrote and exits with the command's status" {
@@ -343,16 +344,13 @@ teardown() {
     "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage - : echo tar" \
     "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage * : mkdir \$4 && echo covered > \$4/lcov.info"
 
-  export TMPDIR="${BATS_TEST_TMPDIR}/tmp"
-  mkdir "$TMPDIR"
-
   run "$PLUGIN_DIR/hooks/command"
 
   assert_success
   assert_line "Skipped /workdir/coverage: coverage already holds the same files"
   # The same directory as before, not an identical one moved into its place.
   assert_equal "$(ls -di coverage)" "$before"
-  assert_equal "$(ls -A "$TMPDIR")" ""
+  assert_equal "$(ls -A)" "coverage"
 }
 
 @test "copy-out replaces a to that holds the same file names with different contents" {

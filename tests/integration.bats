@@ -314,8 +314,8 @@ in_job_dir() {
   skip_if_no_docker
   in_job_dir
 
-  # /workdir is the job's working directory, so a scratch copy made inside the
-  # working directory would be part of what is being copied.
+  # /workdir is the job's working directory, where the scratch copy is made, so
+  # the scratch copy is part of what docker copies. The hook takes it back out.
   unset BUILDKITE_PLUGIN_DOCKER_RUN_MOUNT_CHECKOUT
   mounted_job_dir="$PWD"
   export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_2="echo built > app.js"

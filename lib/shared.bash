@@ -79,10 +79,13 @@ plugin_copy_out() {
   # The copy lands in a scratch directory and is then moved into place:
   # `docker cp` into a directory that already exists nests the copy inside it,
   # and removing `to` first would remove the source whenever a mount puts one
-  # inside the other. The scratch directory is in the system temp dir rather
-  # than the working directory, so that a `from` that contains the working
-  # directory through a mount cannot include the scratch copy in itself.
-  if ! scratch="$(mktemp -d "${TMPDIR:-/tmp}/docker-run-buildkite-plugin.XXXXXX")"; then
+  # inside the other.
+  #
+  # The scratch directory is in the job's working directory rather than the
+  # system's temporary one, so the move is a rename. /tmp is often a tmpfs too
+  # small for the output, and a move across filesystems that failed part-way
+  # would leave `to` half replaced.
+  if ! scratch="$(mktemp -d "$(pwd)/.docker-run-copy-out.XXXXXX")"; then
     echo "^^^ +++"
     echo "Error: could not create a directory to copy ${from} into"
     return 1
@@ -91,6 +94,13 @@ plugin_copy_out() {
   set -x
   docker cp --follow-link "${container}:${from}" "${scratch}/copy" || { copy_status=$?; } 2>/dev/null
   { set +x; } 2>/dev/null
+
+  # With the checkout mounted, a `from` that contains the working directory
+  # contains this scratch directory too. Its name is unique to this copy, so
+  # anything of that name inside the copy is the scratch directory itself.
+  if [[ "$copy_status" -eq 0 ]]; then
+    find "${scratch}/copy" -name "${scratch##*/}" -prune -exec rm -rf {} \; || copy_status=$?
+  fi
 
   # A `to` that already holds the same files is left alone. That is the mounted
   # checkout: `from` and `to` are then one directory, which the container wrote
