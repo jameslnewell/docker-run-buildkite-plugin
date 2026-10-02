@@ -29,7 +29,9 @@ teardown() {
 
 # Each entry is two `cp` calls: a probe that asks for the path as a tar stream
 # (`-`), where any output at all means the path exists, and then the copy, where
-# $3 is the destination the hook handed to docker.
+# $3 is the destination the hook handed to docker. A probe that answers nothing
+# is followed by the same probe of /, which tells a missing path from a
+# container that cannot be read at all.
 
 @test "copy-out resolves a relative from against the container's working directory" {
   export BUILDKITE_PLUGIN_DOCKER_RUN_COPY_OUT_0="coverage:backend/coverage"
@@ -153,7 +155,8 @@ teardown() {
     "${INSPECT_WORKDIR} docker-run-buildkite-plugin-test-job-id : echo /workdir" \
     "cp docker-run-buildkite-plugin-test-job-id:/workdir/coverage - : echo tar" \
     "cp docker-run-buildkite-plugin-test-job-id:/workdir/coverage * : echo covered > \$3" \
-    "cp docker-run-buildkite-plugin-test-job-id:/workdir/docs - : echo 'Error response from daemon: Could not find the file /workdir/docs in container docker-run-buildkite-plugin-test-job-id' >&2; exit 1"
+    "cp docker-run-buildkite-plugin-test-job-id:/workdir/docs - : echo 'Error response from daemon: Could not find the file /workdir/docs in container docker-run-buildkite-plugin-test-job-id' >&2; exit 1" \
+    "cp docker-run-buildkite-plugin-test-job-id:/ - : echo tar"
 
   export TMPDIR="${BATS_TEST_TMPDIR}/tmp"
   mkdir "$TMPDIR"
@@ -190,13 +193,35 @@ teardown() {
     "create --name docker-run-buildkite-plugin-test-job-id --tty ubuntu:24.04 : true" \
     "start --attach docker-run-buildkite-plugin-test-job-id : true" \
     "${INSPECT_WORKDIR} docker-run-buildkite-plugin-test-job-id : echo /workdir" \
-    "cp docker-run-buildkite-plugin-test-job-id:/workdir/docs - : echo 'Error response from daemon: Could not find the file /workdir/docs in container docker-run-buildkite-plugin-test-job-id' >&2; exit 1"
+    "cp docker-run-buildkite-plugin-test-job-id:/workdir/docs - : echo 'Error response from daemon: Could not find the file /workdir/docs in container docker-run-buildkite-plugin-test-job-id' >&2; exit 1" \
+    "cp docker-run-buildkite-plugin-test-job-id:/ - : echo tar"
 
   run "$PLUGIN_DIR/hooks/command"
 
   assert_success
   assert_line "Skipped /workdir/docs: not found in the container"
   [[ ! -e docs ]]
+}
+
+@test "copy-out does not call a from missing when the container cannot be read at all" {
+  export BUILDKITE_PLUGIN_DOCKER_RUN_COPY_OUT_0="coverage:coverage"
+
+  # Neither the path nor / answers the probe, so the copy runs and its failure
+  # is the hook's.
+  stub docker \
+    "pull ubuntu:24.04 : true" \
+    "create --name docker-run-buildkite-plugin-test-job-id --tty ubuntu:24.04 : true" \
+    "start --attach docker-run-buildkite-plugin-test-job-id : true" \
+    "${INSPECT_WORKDIR} docker-run-buildkite-plugin-test-job-id : echo /workdir" \
+    "cp docker-run-buildkite-plugin-test-job-id:/workdir/coverage - : exit 1" \
+    "cp docker-run-buildkite-plugin-test-job-id:/ - : exit 1" \
+    "cp docker-run-buildkite-plugin-test-job-id:/workdir/coverage * : echo 'Error response from daemon: No such container: docker-run-buildkite-plugin-test-job-id' >&2; exit 1"
+
+  run "$PLUGIN_DIR/hooks/command"
+
+  assert_failure 1
+  refute_output --partial "Skipped"
+  assert_line "Error: could not copy /workdir/coverage out of the container to coverage"
 }
 
 @test "copy-out fails the hook when the copy fails for any other reason" {

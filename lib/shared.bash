@@ -63,8 +63,12 @@ plugin_copy_out() {
 
   # `docker cp` cannot be asked whether a path exists, and how it words a
   # missing one varies between Docker versions. Asking for the path as a tar
-  # stream answers it: a byte only arrives when the path is there.
-  if [[ -z "$(docker cp "${container}:${from}" - 2>/dev/null | head -c 1)" ]]; then
+  # stream answers it: a byte only arrives when the path is there. No byte
+  # arrives when the container has gone or its filesystem cannot be read
+  # either, so the path is only called missing if / does answer. If it does
+  # not, the copy below fails with docker's own error.
+  if [[ -z "$(docker cp "${container}:${from}" - 2>/dev/null | head -c 1)" \
+    && -n "$(docker cp "${container}:/" - 2>/dev/null | head -c 1)" ]]; then
     echo "Skipped ${from}: not found in the container"
     return 0
   fi
