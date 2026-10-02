@@ -49,3 +49,83 @@ plugin_read_list_into_result() {
   fi
   [[ ${#result[@]} -gt 0 ]]
 }
+
+# Prints the agent's path for a container path that a bind mount puts on the
+# agent, and an empty line for any other path. `mounts` is the container's
+# mounts, one "<type>\t<destination>\t<source>" per line.
+#
+# The deepest mount containing the path decides. A volume mounted inside the
+# checkout (`/workdir/node_modules`) hides the checkout's own directory of that
+# name, so a path under it is not the agent's.
+plugin_bind_mounted_path() {
+  local path="$1"
+  local mounts="$2"
+  local type destination source
+  local deepest=""
+  local mounted=""
+  while IFS=$'\t' read -r type destination source; do
+    [[ -n "$type" ]] || continue
+    destination="${destination%/}"
+    [[ "$path" == "$destination" || "$path" == "${destination}/"* ]] || continue
+    [[ ${#destination} -ge ${#deepest} ]] || continue
+    deepest="$destination"
+    mounted=""
+    [[ "$type" != "bind" ]] || mounted="${source%/}${path#"$destination"}"
+  done <<< "$mounts"
+  printf '%s\n' "$mounted"
+}
+
+# Copies one path out of a stopped container to `to` in the job's working
+# directory, replacing whatever is there. A `from` the container does not have
+# is logged and skipped; any other failure returns non-zero.
+plugin_copy_out() {
+  local container="$1"
+  local from="$2"
+  local to="$3"
+  local mounts="$4"
+  local dest mounted scratch error
+  dest="$(pwd)/${to}"
+
+  # With the checkout mounted over the container's working directory, `from` and
+  # `to` can be one directory, and the output is already where it was asked for.
+  # Replacing it with a copy of itself would only fail on a daemon without
+  # user-namespace remapping, where the container's files are root's and the
+  # agent cannot remove them.
+  mounted="$(plugin_bind_mounted_path "$from" "$mounts")"
+  if [[ -n "$mounted" && "$mounted" -ef "$dest" ]]; then
+    echo "Skipped ${from}: already at ${to} through a mount"
+    return 0
+  fi
+
+  # The copy lands in a scratch directory and is then moved into place:
+  # `docker cp` into a directory that already exists nests the copy inside it,
+  # and removing `to` first would remove the source whenever a mount puts one
+  # inside the other. The scratch directory is in the working directory rather
+  # than the system temp dir so that the move is a rename, and so that one
+  # stranded by a killed job is cleared by the next checkout.
+  if ! scratch="$(mktemp -d "$(pwd)/.docker-run-copy-out.XXXXXX")"; then
+    echo "+++ Error: Could not create a directory to copy ${from} into."
+    return 1
+  fi
+
+  if ! error="$(docker cp "${container}:${from}" "${scratch}/out" 2>&1)"; then
+    rm -rf "$scratch"
+    # The daemon's wording, then the Docker 20.10 CLI's.
+    if [[ "$error" == *"Could not find the file"* || "$error" == *"No such container:path"* ]]; then
+      echo "Skipped ${from}: not found in the container"
+      return 0
+    fi
+    echo "+++ Error: Could not copy ${from} out of the container."
+    printf '%s\n' "$error"
+    return 1
+  fi
+
+  if ! { mkdir -p "$(dirname "$dest")" && rm -rf "$dest" && mv "${scratch}/out" "$dest"; }; then
+    rm -rf "$scratch"
+    echo "+++ Error: Could not move the copy of ${from} to ${to}."
+    return 1
+  fi
+
+  rm -rf "$scratch"
+  echo "Copied ${from} to ${to}"
+}
