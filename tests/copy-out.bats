@@ -416,6 +416,50 @@ teardown() {
   assert_equal "$(cat coverage/lcov.info)" "covered"
 }
 
+@test "copy-out replaces a file at to with a directory that holds a file of the same name and content" {
+  # `diff` between a directory and a file compares the file with the directory's
+  # entry of that name, and would call these two the same.
+  export BUILDKITE_PLUGIN_DOCKER_RUN_COPY_OUT_0="coverage:lcov.info"
+  echo covered > lcov.info
+
+  stub docker \
+    "pull ubuntu:24.04 : true" \
+    "create --name docker-run-buildkite-plugin-test-job-id --tty ubuntu:24.04 : true" \
+    "start --attach docker-run-buildkite-plugin-test-job-id : true" \
+    "${INSPECT_WORKDIR} docker-run-buildkite-plugin-test-job-id : echo /workdir" \
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage - : echo tar" \
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage * : mkdir \$4 && echo covered > \$4/lcov.info"
+
+  run "$PLUGIN_DIR/hooks/command"
+
+  assert_success
+  assert_line "Copied /workdir/coverage to lcov.info"
+  assert_equal "$(cat lcov.info/lcov.info)" "covered"
+}
+
+@test "copy-out replaces a directory at to with a file, whatever the directory holds" {
+  # The copy is staged as a file named `copy`, which is the entry `diff` would
+  # compare it with inside the directory.
+  export BUILDKITE_PLUGIN_DOCKER_RUN_COPY_OUT_0="/out/report.txt:reports"
+  mkdir reports
+  echo report > reports/copy
+
+  stub docker \
+    "pull ubuntu:24.04 : true" \
+    "create --name docker-run-buildkite-plugin-test-job-id --tty ubuntu:24.04 : true" \
+    "start --attach docker-run-buildkite-plugin-test-job-id : true" \
+    "${INSPECT_WORKDIR} docker-run-buildkite-plugin-test-job-id : echo /workdir" \
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/out/report.txt - : echo tar" \
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/out/report.txt * : echo report > \$4"
+
+  run "$PLUGIN_DIR/hooks/command"
+
+  assert_success
+  assert_line "Copied /out/report.txt to reports"
+  [[ -f reports ]]
+  assert_equal "$(cat reports)" "report"
+}
+
 # --- the other hook phases copy in the hook that ran the container ---
 
 @test "copy-out copies in the pre-command hook, from that hook's container" {

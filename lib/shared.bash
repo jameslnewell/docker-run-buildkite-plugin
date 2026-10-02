@@ -106,7 +106,12 @@ plugin_copy_out() {
   # checkout: `from` and `to` are then one directory, which the container wrote
   # as root unless told otherwise, and an agent that is not root could not
   # remove it to put a copy of itself in its place.
-  if [[ "$copy_status" -eq 0 ]] && diff -r "${scratch}/copy" "$dest" >/dev/null 2>&1; then
+  #
+  # Both have to be the same kind first. Given a file and a directory, `diff`
+  # compares the file with the entry of its name inside the directory.
+  if [[ "$copy_status" -eq 0 ]] \
+    && [[ -d "${scratch}/copy" && -d "$dest" || -f "${scratch}/copy" && -f "$dest" ]] \
+    && diff -r "${scratch}/copy" "$dest" >/dev/null 2>&1; then
     rm -rf "$scratch"
     echo "Skipped ${from}: ${to} already holds the same files"
     return 0
