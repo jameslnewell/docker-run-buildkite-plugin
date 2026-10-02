@@ -116,7 +116,7 @@ plugin_copy_out() {
   # compares the file with the entry of its name inside the directory.
   if [[ "$copy_status" -eq 0 ]] \
     && [[ -d "${scratch}/copy" && -d "$dest" || -f "${scratch}/copy" && -f "$dest" ]] \
-    && diff -r "${scratch}/copy" "$dest" >/dev/null 2>&1; then
+    && diff -rq "${scratch}/copy" "$dest" >/dev/null 2>&1; then
     rm -rf "$scratch"
     echo "Skipped ${from}: ${to} already holds the same files"
     return 0
