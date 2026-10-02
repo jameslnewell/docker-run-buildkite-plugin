@@ -139,7 +139,7 @@ steps:
           upload: "coverage/**/*"
 ```
 
-`copy-out` is newer than `v0.18.0`, so pin a release that includes it. See [Copying output out of the container](#copying-output-out-of-the-container).
+`copy-out` is not in older releases, so pin one that includes it. See [Copying output out of the container](#copying-output-out-of-the-container).
 
 Bracket the step's own command with setup and teardown by listing the plugin twice — `hook: pre-command` runs before the step, `hook: post-command` after it. In both modes the plugin only runs its own `command`, so the step keeps its command:
 
