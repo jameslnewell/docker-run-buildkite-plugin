@@ -86,8 +86,8 @@ teardown() {
   assert_equal "$(cat report.xml)" "report"
 }
 
-@test "copy-out resolves a to beginning with ./ against the job's working directory" {
-  export BUILDKITE_PLUGIN_DOCKER_RUN_COPY_OUT_0="coverage:./backend/coverage"
+@test "copy-out takes a leading ./ on either side and a trailing slash on to" {
+  export BUILDKITE_PLUGIN_DOCKER_RUN_COPY_OUT_0="./coverage:./backend/coverage/"
 
   stub docker \
     "pull ubuntu:24.04 : true" \
@@ -100,6 +100,7 @@ teardown() {
   run "$PLUGIN_DIR/hooks/command"
 
   assert_success
+  assert_line "Copied /workdir/coverage to backend/coverage"
   assert_equal "$(cat backend/coverage)" "covered"
 }
 
@@ -474,6 +475,29 @@ teardown() {
 
 @test "copy-out to the working directory itself fails before anything is pulled" {
   export BUILDKITE_PLUGIN_DOCKER_RUN_COPY_OUT_0="dist:."
+  stub docker
+
+  run "$PLUGIN_DIR/hooks/command"
+
+  assert_failure 1
+  assert_line --partial "+++ Error: The <to> of a copy-out entry must be a path inside the job's working directory."
+}
+
+# `./` and `/` are the working directory and the root with nothing left once the
+# prefix and the trailing slashes are stripped. Accepted, either would have the
+# copy remove the job's working directory.
+@test "copy-out to ./ fails before anything is pulled" {
+  export BUILDKITE_PLUGIN_DOCKER_RUN_COPY_OUT_0="dist:./"
+  stub docker
+
+  run "$PLUGIN_DIR/hooks/command"
+
+  assert_failure 1
+  assert_line --partial "+++ Error: The <to> of a copy-out entry must be a path inside the job's working directory."
+}
+
+@test "copy-out to / fails before anything is pulled" {
+  export BUILDKITE_PLUGIN_DOCKER_RUN_COPY_OUT_0="dist:/"
   stub docker
 
   run "$PLUGIN_DIR/hooks/command"
