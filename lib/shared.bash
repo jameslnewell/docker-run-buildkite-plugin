@@ -137,6 +137,19 @@ plugin_copy_out() {
     return 0
   fi
 
+  # `rm -rf` removes what it can and fails on the rest, so a `to` it cannot
+  # remove whole would lose part of what it holds, and the copy would then be
+  # thrown away too. Through the mounted checkout that is the command's own
+  # output. Such a `to` is left as it was and the entry fails instead.
+  if [[ "$copy_status" -eq 0 && -d "$dest" && ! -L "$dest" ]] \
+    && [[ ! -w "$(dirname "$dest")" || -n "$(find "$dest" -type d ! -exec test -w {} \; -print 2>&1 | head -n 1)" ]]; then
+    rm -rf "$scratch"
+    echo "^^^ +++"
+    echo "Error: could not copy ${from} out of the container to ${to}"
+    echo "${to} holds a directory this agent cannot write to, so it was left as it was."
+    return 1
+  fi
+
   if [[ "$copy_status" -eq 0 ]]; then
     { mkdir -p "$(dirname "$dest")" && rm -rf "$dest" && mv "${scratch}/copy" "$dest"; } || copy_status=$?
   fi

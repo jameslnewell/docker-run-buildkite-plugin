@@ -24,6 +24,9 @@ setup() {
 # Not `|| true`, unlike tests/command.bats: the plan is the assertion here. A
 # copy that never ran, or ran before the container exited, fails the unstub.
 teardown() {
+  # A test that takes write permission away has to give it back, or bats cannot
+  # remove its temp directory.
+  chmod -R u+w "${BATS_TEST_TMPDIR}/job" 2>/dev/null || true
   unstub docker
 }
 
@@ -328,6 +331,35 @@ teardown() {
   assert_failure 3
   assert_line "Error: could not copy /workdir/coverage out of the container to coverage"
   assert_line "Error: could not copy /workdir/docs out of the container to docs"
+}
+
+@test "copy-out leaves a to it cannot remove whole as it was" {
+  # rm -rf would remove lcov.info and then fail on html/, leaving part of to
+  # and none of the copy. Root can remove anything, so only a non-root run
+  # reaches this.
+  [[ "$(id -u)" -ne 0 ]] || skip "root can remove any to"
+  export BUILDKITE_PLUGIN_DOCKER_RUN_COPY_OUT_0="coverage:coverage"
+  mkdir -p coverage/html
+  echo earlier > coverage/lcov.info
+  echo earlier > coverage/html/index.html
+  chmod a-w coverage/html
+
+  stub docker \
+    "pull ubuntu:24.04 : true" \
+    "create --name docker-run-buildkite-plugin-test-job-id --tty ubuntu:24.04 : true" \
+    "start --attach docker-run-buildkite-plugin-test-job-id : true" \
+    "${INSPECT_WORKDIR} docker-run-buildkite-plugin-test-job-id : echo /workdir" \
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage - : echo tar" \
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage * : mkdir \$4 && echo covered > \$4/lcov.info"
+
+  run "$PLUGIN_DIR/hooks/command"
+
+  assert_failure 1
+  assert_line "Error: could not copy /workdir/coverage out of the container to coverage"
+  assert_line "coverage holds a directory this agent cannot write to, so it was left as it was."
+  assert_equal "$(cat coverage/lcov.info)" "earlier"
+  assert_equal "$(cat coverage/html/index.html)" "earlier"
+  assert_equal "$(ls -A)" "coverage"
 }
 
 @test "copy-out still copies the entries after one that failed" {

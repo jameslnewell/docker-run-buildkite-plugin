@@ -270,8 +270,9 @@ Each entry is `<from>:<to>`:
   the checkout, with one exception. The check reads the files, so it cannot
   recognise output that holds a file the agent cannot read or, with GNU `diff`,
   a symlink that points nowhere on the agent. Where the daemon leaves the
-  container's files owned by root, such an entry fails the hook with
-  `Permission denied` instead of being left in place.
+  container's files owned by root, such an entry fails the hook and leaves
+  `to` as it was. The same goes for any `to` holding a directory the agent
+  cannot write to: it is never partly removed.
 
 An entry that is not exactly `<from>:<to>` fails the hook before the image is
 pulled.
