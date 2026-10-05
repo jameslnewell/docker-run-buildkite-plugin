@@ -279,14 +279,14 @@ teardown() {
     "start --attach docker-run-buildkite-plugin-test-job-id : true" \
     "${INSPECT_WORKDIR} docker-run-buildkite-plugin-test-job-id : echo /workdir" \
     "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage - : echo tar" \
-    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage * : echo 'Error response from daemon: lstat /workdir/coverage: not a directory' >&2; exit 1"
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage * : echo 'write /builds/job/copy/lcov.info: no space left on device' >&2; exit 1"
 
   run "$PLUGIN_DIR/hooks/command"
 
   assert_failure 1
   assert_line "^^^ +++"
   assert_line "Error: could not copy /workdir/coverage out of the container to coverage"
-  assert_line "Error response from daemon: lstat /workdir/coverage: not a directory"
+  assert_line "write /builds/job/copy/lcov.info: no space left on device"
   [[ ! -e coverage ]]
 }
 
@@ -372,7 +372,7 @@ teardown() {
     "start --attach docker-run-buildkite-plugin-test-job-id : true" \
     "${INSPECT_WORKDIR} docker-run-buildkite-plugin-test-job-id : echo /workdir" \
     "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage - : echo tar" \
-    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage * : echo 'Error response from daemon: lstat /workdir/coverage: not a directory' >&2; exit 1" \
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage * : echo 'write /builds/job/copy/lcov.info: no space left on device' >&2; exit 1" \
     "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/docs - : echo tar" \
     "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/docs * : echo documented > \$4"
 
@@ -391,7 +391,7 @@ teardown() {
     "start --attach docker-run-buildkite-plugin-test-job-id : exit 3" \
     "${INSPECT_WORKDIR} docker-run-buildkite-plugin-test-job-id : echo /workdir" \
     "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage - : echo tar" \
-    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage * : echo 'Error response from daemon: lstat /workdir/coverage: not a directory' >&2; exit 1"
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage * : echo 'write /builds/job/copy/lcov.info: no space left on device' >&2; exit 1"
 
   run "$PLUGIN_DIR/hooks/command"
 
