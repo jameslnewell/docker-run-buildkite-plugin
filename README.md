@@ -267,7 +267,11 @@ Each entry is `<from>:<to>`:
   default `mount-checkout`, the container's `/workdir/coverage` is the agent's
   `coverage`, so `coverage:coverage` finds the output already there and says so
   in the log. The same `copy-out` therefore works whether or not a step mounts
-  the checkout.
+  the checkout, with one exception. The check reads the files, so it cannot
+  recognise output that holds a file the agent cannot read or, with GNU `diff`,
+  a symlink that points nowhere on the agent. Where the daemon leaves the
+  container's files owned by root, such an entry fails the hook with
+  `Permission denied` instead of being left in place.
 
 An entry that is not exactly `<from>:<to>` fails the hook before the image is
 pulled.
