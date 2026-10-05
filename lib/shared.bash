@@ -144,7 +144,7 @@ plugin_copy_out() {
   # directory with something in it needs to be writable: an empty one, such as
   # the mount point docker leaves for a volume, goes with its parent.
   if [[ "$copy_status" -eq 0 && -d "$dest" && ! -L "$dest" ]] \
-    && [[ ! -w "$(dirname "$dest")" || -n "$(find "$dest" -type d ! -empty ! -exec test -w {} \; -print 2>&1 | head -n 1)" ]]; then
+    && [[ ! -w "$(dirname "$dest")" || -n "$(find "$dest" -type d -exec sh -c 'for d; do [ -w "$d" ] || [ -z "$(ls -A "$d")" ] || echo "$d"; done' sh {} + 2>&1 | head -n 1)" ]]; then
     rm -rf "$scratch"
     echo "^^^ +++"
     echo "Error: could not copy ${from} out of the container to ${to}"
