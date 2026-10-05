@@ -362,6 +362,29 @@ teardown() {
   assert_equal "$(ls -A)" "coverage"
 }
 
+@test "copy-out leaves a to whose directory it cannot write to as it was" {
+  # rm -rf would empty reports/coverage and then fail to remove it.
+  [[ "$(id -u)" -ne 0 ]] || skip "root can remove any to"
+  export BUILDKITE_PLUGIN_DOCKER_RUN_COPY_OUT_0="coverage:reports/coverage"
+  mkdir -p reports/coverage
+  echo earlier > reports/coverage/lcov.info
+  chmod a-w reports
+
+  stub docker \
+    "pull ubuntu:24.04 : true" \
+    "create --name docker-run-buildkite-plugin-test-job-id --tty ubuntu:24.04 : true" \
+    "start --attach docker-run-buildkite-plugin-test-job-id : true" \
+    "${INSPECT_WORKDIR} docker-run-buildkite-plugin-test-job-id : echo /workdir" \
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage - : echo tar" \
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage * : mkdir \$4 && echo covered > \$4/lcov.info"
+
+  run "$PLUGIN_DIR/hooks/command"
+
+  assert_failure 1
+  assert_line "reports/coverage holds a directory this agent cannot write to, so it was left as it was."
+  assert_equal "$(cat reports/coverage/lcov.info)" "earlier"
+}
+
 @test "copy-out still copies the entries after one that failed" {
   export BUILDKITE_PLUGIN_DOCKER_RUN_COPY_OUT_0="coverage:coverage"
   export BUILDKITE_PLUGIN_DOCKER_RUN_COPY_OUT_1="docs:docs"
