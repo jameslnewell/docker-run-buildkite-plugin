@@ -362,6 +362,28 @@ teardown() {
   assert_equal "$(ls -A)" "coverage"
 }
 
+@test "copy-out replaces an empty directory it cannot write to" {
+  # The mount point docker leaves in the checkout for a volume is root's and
+  # empty, and goes with its parent like any empty directory.
+  [[ "$(id -u)" -ne 0 ]] || skip "root can remove any to"
+  export BUILDKITE_PLUGIN_DOCKER_RUN_COPY_OUT_0="node_modules:node_modules"
+  mkdir node_modules
+  chmod a-w node_modules
+
+  stub docker \
+    "pull ubuntu:24.04 : true" \
+    "create --name docker-run-buildkite-plugin-test-job-id --tty ubuntu:24.04 : true" \
+    "start --attach docker-run-buildkite-plugin-test-job-id : true" \
+    "${INSPECT_WORKDIR} docker-run-buildkite-plugin-test-job-id : echo /workdir" \
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/node_modules - : echo tar" \
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/node_modules * : mkdir \$4 && echo installed > \$4/package.json"
+
+  run "$PLUGIN_DIR/hooks/command"
+
+  assert_success
+  assert_equal "$(cat node_modules/package.json)" "installed"
+}
+
 @test "copy-out leaves a to whose directory it cannot write to as it was" {
   # rm -rf would empty reports/coverage and then fail to remove it.
   [[ "$(id -u)" -ne 0 ]] || skip "root can remove any to"
