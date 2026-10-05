@@ -27,7 +27,8 @@ teardown() {
   # A test that takes write permission away has to give it back, or bats cannot
   # remove its temp directory.
   chmod -R u+w "${BATS_TEST_TMPDIR}/job" 2>/dev/null || true
-  unstub docker
+  # A test that skips does so before it stubs anything.
+  [[ -n "${BATS_TEST_SKIPPED:-}" ]] || unstub docker
 }
 
 # Each entry is two `cp` calls: a probe that asks for the path as a tar stream
