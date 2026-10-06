@@ -24,18 +24,16 @@ setup() {
 # Not `|| true`, unlike tests/command.bats: the plan is the assertion here. A
 # copy that never ran, or ran before the container exited, fails the unstub.
 teardown() {
-  # A test that takes write permission away has to give it back, or bats cannot
-  # remove its temp directory.
-  chmod -R u+w "${BATS_TEST_TMPDIR}/job" 2>/dev/null || true
-  # A test that skips does so before it stubs anything.
-  [[ -n "${BATS_TEST_SKIPPED:-}" ]] || unstub docker
+  unstub docker
 }
 
-# Each entry is two `cp` calls: a probe that asks for the path as a tar stream
-# (`-`), where any output at all means the path exists, and then the copy, where
-# $4 is the destination the hook handed to docker. A probe that answers nothing
-# is followed by the same probe of /, which tells a missing path from a
-# container that cannot be read at all.
+# A `cp` to `-` is a probe: it asks for a path as a tar stream, and any output
+# at all means the path is there. Each entry starts with a probe of `<from>/.`,
+# which only a directory answers, and a directory is then copied as `<from>/.`
+# so that its contents land in `to`. When that probe answers nothing, a probe of
+# `<from>` itself tells a file from nothing at all, and one of / tells a missing
+# path from a container that cannot be read. In the copy, $4 is the destination
+# the hook handed to docker.
 
 @test "copy-out resolves a relative from against the container's working directory" {
   export BUILDKITE_PLUGIN_DOCKER_RUN_COPY_OUT_0="coverage:backend/coverage"
@@ -45,15 +43,16 @@ teardown() {
     "create --name docker-run-buildkite-plugin-test-job-id --tty ubuntu:24.04 : true" \
     "start --attach docker-run-buildkite-plugin-test-job-id : true" \
     "${INSPECT_WORKDIR} docker-run-buildkite-plugin-test-job-id : echo /workdir/backend" \
-    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/backend/coverage - : echo tar" \
-    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/backend/coverage * : echo covered > \$4"
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/backend/coverage/. - : echo tar" \
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/backend/coverage/. backend/coverage : mkdir \$4 && echo covered > \$4/lcov.info"
 
   run "$PLUGIN_DIR/hooks/command"
 
   assert_success
   assert_line -- "--- :docker: copying out"
+  assert_line "docker cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/backend/coverage/. backend/coverage"
   assert_line "Copied /workdir/backend/coverage to backend/coverage"
-  assert_equal "$(cat backend/coverage)" "covered"
+  assert_equal "$(cat backend/coverage/lcov.info)" "covered"
 }
 
 @test "copy-out resolves a relative from against / when the container has no working directory" {
@@ -64,30 +63,32 @@ teardown() {
     "create --name docker-run-buildkite-plugin-test-job-id --tty ubuntu:24.04 : true" \
     "start --attach docker-run-buildkite-plugin-test-job-id : true" \
     "${INSPECT_WORKDIR} docker-run-buildkite-plugin-test-job-id : echo" \
-    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/coverage - : echo tar" \
-    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/coverage * : echo covered > \$4"
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/coverage/. - : echo tar" \
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/coverage/. coverage : mkdir \$4 && echo covered > \$4/lcov.info"
 
   run "$PLUGIN_DIR/hooks/command"
 
   assert_success
-  assert_equal "$(cat coverage)" "covered"
+  assert_line "Copied /coverage to coverage"
+  assert_equal "$(cat coverage/lcov.info)" "covered"
 }
 
 @test "copy-out uses an absolute from as is" {
-  export BUILDKITE_PLUGIN_DOCKER_RUN_COPY_OUT_0="/tmp/report.xml:report.xml"
+  export BUILDKITE_PLUGIN_DOCKER_RUN_COPY_OUT_0="/tmp/coverage:coverage"
 
   stub docker \
     "pull ubuntu:24.04 : true" \
     "create --name docker-run-buildkite-plugin-test-job-id --tty ubuntu:24.04 : true" \
     "start --attach docker-run-buildkite-plugin-test-job-id : true" \
     "${INSPECT_WORKDIR} docker-run-buildkite-plugin-test-job-id : echo /workdir" \
-    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/tmp/report.xml - : echo tar" \
-    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/tmp/report.xml * : echo report > \$4"
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/tmp/coverage/. - : echo tar" \
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/tmp/coverage/. coverage : mkdir \$4 && echo covered > \$4/lcov.info"
 
   run "$PLUGIN_DIR/hooks/command"
 
   assert_success
-  assert_equal "$(cat report.xml)" "report"
+  assert_line "Copied /tmp/coverage to coverage"
+  assert_equal "$(cat coverage/lcov.info)" "covered"
 }
 
 @test "copy-out takes a leading ./ on either side and a trailing slash on to" {
@@ -98,20 +99,80 @@ teardown() {
     "create --name docker-run-buildkite-plugin-test-job-id --tty ubuntu:24.04 : true" \
     "start --attach docker-run-buildkite-plugin-test-job-id : true" \
     "${INSPECT_WORKDIR} docker-run-buildkite-plugin-test-job-id : echo /workdir" \
-    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage - : echo tar" \
-    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage * : mkdir \$4 && echo covered > \$4/lcov.info"
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage/. - : echo tar" \
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage/. backend/coverage/ : mkdir \$4 && echo covered > \$4/lcov.info"
 
   run "$PLUGIN_DIR/hooks/command"
 
   assert_success
-  assert_line "Copied /workdir/coverage to backend/coverage"
+  assert_line "Copied /workdir/coverage to backend/coverage/"
   assert_equal "$(cat backend/coverage/lcov.info)" "covered"
 }
 
-@test "copy-out refuses to put a file at a to written as a directory" {
-  # `to` is replaced, never copied into, so the file would take the place of the
-  # directory and everything in it, where `cp` would have put the file inside.
-  export BUILDKITE_PLUGIN_DOCKER_RUN_COPY_OUT_0="/out/junit.xml:test-results/"
+@test "copy-out copies a directory's contents to a to that is not there yet" {
+  export BUILDKITE_PLUGIN_DOCKER_RUN_COPY_OUT_0="coverage:coverage"
+
+  stub docker \
+    "pull ubuntu:24.04 : true" \
+    "create --name docker-run-buildkite-plugin-test-job-id --tty ubuntu:24.04 : true" \
+    "start --attach docker-run-buildkite-plugin-test-job-id : true" \
+    "${INSPECT_WORKDIR} docker-run-buildkite-plugin-test-job-id : echo /workdir" \
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage/. - : echo tar" \
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage/. coverage : mkdir \$4 && echo covered > \$4/lcov.info"
+
+  run "$PLUGIN_DIR/hooks/command"
+
+  assert_success
+  assert_line "Copied /workdir/coverage to coverage"
+  assert_equal "$(ls -A coverage)" "lcov.info"
+  assert_equal "$(cat coverage/lcov.info)" "covered"
+}
+
+@test "copy-out copies a directory's contents into a to that is already there, and leaves what else it holds" {
+  # Asked for as `coverage/.`, or docker would put it at coverage/coverage.
+  export BUILDKITE_PLUGIN_DOCKER_RUN_COPY_OUT_0="coverage:coverage"
+  mkdir coverage
+  echo earlier > coverage/earlier.txt
+
+  stub docker \
+    "pull ubuntu:24.04 : true" \
+    "create --name docker-run-buildkite-plugin-test-job-id --tty ubuntu:24.04 : true" \
+    "start --attach docker-run-buildkite-plugin-test-job-id : true" \
+    "${INSPECT_WORKDIR} docker-run-buildkite-plugin-test-job-id : echo /workdir" \
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage/. - : echo tar" \
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage/. coverage : echo covered > \$4/lcov.info"
+
+  run "$PLUGIN_DIR/hooks/command"
+
+  assert_success
+  assert_line "Copied /workdir/coverage to coverage"
+  assert_equal "$(cat coverage/lcov.info)" "covered"
+  assert_equal "$(cat coverage/earlier.txt)" "earlier"
+}
+
+@test "copy-out copies a file to a path that is not there yet" {
+  # A file has no contents to ask for, so it is copied under its own path.
+  export BUILDKITE_PLUGIN_DOCKER_RUN_COPY_OUT_0="/out/junit.xml:report.xml"
+
+  stub docker \
+    "pull ubuntu:24.04 : true" \
+    "create --name docker-run-buildkite-plugin-test-job-id --tty ubuntu:24.04 : true" \
+    "start --attach docker-run-buildkite-plugin-test-job-id : true" \
+    "${INSPECT_WORKDIR} docker-run-buildkite-plugin-test-job-id : echo /workdir" \
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/out/junit.xml/. - : exit 1" \
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/out/junit.xml - : echo tar" \
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/out/junit.xml report.xml : echo results > \$4"
+
+  run "$PLUGIN_DIR/hooks/command"
+
+  assert_success
+  assert_line "docker cp --follow-link docker-run-buildkite-plugin-test-job-id:/out/junit.xml report.xml"
+  assert_line "Copied /out/junit.xml to report.xml"
+  assert_equal "$(cat report.xml)" "results"
+}
+
+@test "copy-out copies a file into a to that is a directory, and leaves what else it holds" {
+  export BUILDKITE_PLUGIN_DOCKER_RUN_COPY_OUT_0="/out/junit.xml:test-results"
   mkdir test-results
   echo earlier > test-results/earlier.xml
 
@@ -120,99 +181,56 @@ teardown() {
     "create --name docker-run-buildkite-plugin-test-job-id --tty ubuntu:24.04 : true" \
     "start --attach docker-run-buildkite-plugin-test-job-id : true" \
     "${INSPECT_WORKDIR} docker-run-buildkite-plugin-test-job-id : echo /workdir" \
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/out/junit.xml/. - : exit 1" \
     "cp --follow-link docker-run-buildkite-plugin-test-job-id:/out/junit.xml - : echo tar" \
-    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/out/junit.xml * : echo results > \$4"
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/out/junit.xml test-results : echo results > \$4/junit.xml"
 
   run "$PLUGIN_DIR/hooks/command"
 
-  assert_failure 1
-  assert_line "Error: test-results/ ends in / but /out/junit.xml is a file. Name the file in <to>, as in test-results/junit.xml"
-  assert_equal "$(ls -A)" "test-results"
-  assert_equal "$(ls -A test-results)" "earlier.xml"
+  assert_success
+  assert_line "Copied /out/junit.xml to test-results"
+  assert_equal "$(cat test-results/junit.xml)" "results"
+  assert_equal "$(cat test-results/earlier.xml)" "earlier"
+}
+
+@test "copy-out creates the directories above to" {
+  # docker cp fails when the directory it is to write into does not exist.
+  export BUILDKITE_PLUGIN_DOCKER_RUN_COPY_OUT_0="coverage:reports/backend/coverage"
+
+  stub docker \
+    "pull ubuntu:24.04 : true" \
+    "create --name docker-run-buildkite-plugin-test-job-id --tty ubuntu:24.04 : true" \
+    "start --attach docker-run-buildkite-plugin-test-job-id : true" \
+    "${INSPECT_WORKDIR} docker-run-buildkite-plugin-test-job-id : echo /workdir" \
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage/. - : echo tar" \
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage/. reports/backend/coverage : mkdir \$4 && echo covered > \$4/lcov.info"
+
+  run "$PLUGIN_DIR/hooks/command"
+
+  assert_success
+  assert_equal "$(cat reports/backend/coverage/lcov.info)" "covered"
 }
 
 @test "copy-out copies every entry" {
   export BUILDKITE_PLUGIN_DOCKER_RUN_COPY_OUT_0="coverage:backend/coverage"
-  export BUILDKITE_PLUGIN_DOCKER_RUN_COPY_OUT_1="docs:backend/docs"
+  export BUILDKITE_PLUGIN_DOCKER_RUN_COPY_OUT_1="junit.xml:backend/junit.xml"
 
   stub docker \
     "pull ubuntu:24.04 : true" \
     "create --name docker-run-buildkite-plugin-test-job-id --tty ubuntu:24.04 : true" \
     "start --attach docker-run-buildkite-plugin-test-job-id : true" \
     "${INSPECT_WORKDIR} docker-run-buildkite-plugin-test-job-id : echo /workdir" \
-    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage - : echo tar" \
-    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage * : echo covered > \$4" \
-    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/docs - : echo tar" \
-    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/docs * : echo documented > \$4"
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage/. - : echo tar" \
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage/. backend/coverage : mkdir \$4 && echo covered > \$4/lcov.info" \
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/junit.xml/. - : exit 1" \
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/junit.xml - : echo tar" \
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/junit.xml backend/junit.xml : echo results > \$4"
 
   run "$PLUGIN_DIR/hooks/command"
 
   assert_success
-  assert_equal "$(cat backend/coverage)" "covered"
-  assert_equal "$(cat backend/docs)" "documented"
-}
-
-@test "copy-out replaces an existing to rather than copying into it" {
-  export BUILDKITE_PLUGIN_DOCKER_RUN_COPY_OUT_0="coverage:coverage"
-  mkdir coverage
-  echo stale > coverage/stale.txt
-
-  stub docker \
-    "pull ubuntu:24.04 : true" \
-    "create --name docker-run-buildkite-plugin-test-job-id --tty ubuntu:24.04 : true" \
-    "start --attach docker-run-buildkite-plugin-test-job-id : true" \
-    "${INSPECT_WORKDIR} docker-run-buildkite-plugin-test-job-id : echo /workdir" \
-    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage - : echo tar" \
-    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage * : mkdir \$4 && echo covered > \$4/lcov.info"
-
-  run "$PLUGIN_DIR/hooks/command"
-
-  assert_success
-  assert_equal "$(cat coverage/lcov.info)" "covered"
-  assert_equal "$(ls -A coverage)" "lcov.info"
-}
-
-@test "copy-out stages the copy inside the job's working directory" {
-  # On the destination's filesystem, so that the move into place is a rename.
-  export BUILDKITE_PLUGIN_DOCKER_RUN_COPY_OUT_0="coverage:coverage"
-
-  stub docker \
-    "pull ubuntu:24.04 : true" \
-    "create --name docker-run-buildkite-plugin-test-job-id --tty ubuntu:24.04 : true" \
-    "start --attach docker-run-buildkite-plugin-test-job-id : true" \
-    "${INSPECT_WORKDIR} docker-run-buildkite-plugin-test-job-id : echo /workdir" \
-    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage - : echo tar" \
-    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage * : echo \$4 > \$4"
-
-  run "$PLUGIN_DIR/hooks/command"
-
-  assert_success
-  assert_regex "$(cat coverage)" "^${PWD}/\.docker-run-copy-out\.[A-Za-z0-9]+/copy$"
-}
-
-@test "copy-out leaves nothing of its own in the job's working directory" {
-  # The copy is staged in a scratch directory inside the job's working directory,
-  # which has to be gone whether the entry was copied, skipped or failed.
-  export BUILDKITE_PLUGIN_DOCKER_RUN_COPY_OUT_0="coverage:coverage"
-  export BUILDKITE_PLUGIN_DOCKER_RUN_COPY_OUT_1="docs:docs"
-  export BUILDKITE_PLUGIN_DOCKER_RUN_COPY_OUT_2="dist:dist"
-
-  stub docker \
-    "pull ubuntu:24.04 : true" \
-    "create --name docker-run-buildkite-plugin-test-job-id --tty ubuntu:24.04 : true" \
-    "start --attach docker-run-buildkite-plugin-test-job-id : true" \
-    "${INSPECT_WORKDIR} docker-run-buildkite-plugin-test-job-id : echo /workdir" \
-    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage - : echo tar" \
-    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage * : echo covered > \$4" \
-    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/docs - : exit 1" \
-    "cp docker-run-buildkite-plugin-test-job-id:/ - : echo tar" \
-    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/dist - : echo tar" \
-    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/dist * : mkdir \$4 && exit 1"
-
-  run "$PLUGIN_DIR/hooks/command"
-
-  assert_failure 1
-  assert_equal "$(ls -A)" "coverage"
+  assert_equal "$(cat backend/coverage/lcov.info)" "covered"
+  assert_equal "$(cat backend/junit.xml)" "results"
 }
 
 @test "copy-out copies what a failed command wrote and exits with the command's status" {
@@ -223,13 +241,13 @@ teardown() {
     "create --name docker-run-buildkite-plugin-test-job-id --tty ubuntu:24.04 : true" \
     "start --attach docker-run-buildkite-plugin-test-job-id : exit 3" \
     "${INSPECT_WORKDIR} docker-run-buildkite-plugin-test-job-id : echo /workdir" \
-    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage - : echo tar" \
-    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage * : echo covered > \$4"
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage/. - : echo tar" \
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage/. coverage : mkdir \$4 && echo covered > \$4/lcov.info"
 
   run "$PLUGIN_DIR/hooks/command"
 
   assert_failure 3
-  assert_equal "$(cat coverage)" "covered"
+  assert_equal "$(cat coverage/lcov.info)" "covered"
 }
 
 @test "copy-out skips a from the container does not have" {
@@ -240,6 +258,7 @@ teardown() {
     "create --name docker-run-buildkite-plugin-test-job-id --tty ubuntu:24.04 : true" \
     "start --attach docker-run-buildkite-plugin-test-job-id : true" \
     "${INSPECT_WORKDIR} docker-run-buildkite-plugin-test-job-id : echo /workdir" \
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/docs/. - : echo 'Error response from daemon: Could not find the file /workdir/docs/. in container docker-run-buildkite-plugin-test-job-id' >&2; exit 1" \
     "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/docs - : echo 'Error response from daemon: Could not find the file /workdir/docs in container docker-run-buildkite-plugin-test-job-id' >&2; exit 1" \
     "cp docker-run-buildkite-plugin-test-job-id:/ - : echo tar"
 
@@ -253,16 +272,17 @@ teardown() {
 @test "copy-out does not call a from missing when the container cannot be read at all" {
   export BUILDKITE_PLUGIN_DOCKER_RUN_COPY_OUT_0="coverage:coverage"
 
-  # Neither the path nor / answers the probe, so the copy runs and its failure
-  # is the hook's.
+  # Neither the path nor / answers a probe, so the copy runs and its failure is
+  # the hook's.
   stub docker \
     "pull ubuntu:24.04 : true" \
     "create --name docker-run-buildkite-plugin-test-job-id --tty ubuntu:24.04 : true" \
     "start --attach docker-run-buildkite-plugin-test-job-id : true" \
     "${INSPECT_WORKDIR} docker-run-buildkite-plugin-test-job-id : echo /workdir" \
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage/. - : exit 1" \
     "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage - : exit 1" \
     "cp docker-run-buildkite-plugin-test-job-id:/ - : exit 1" \
-    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage * : echo 'Error response from daemon: No such container: docker-run-buildkite-plugin-test-job-id' >&2; exit 1"
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage coverage : echo 'Error response from daemon: No such container: docker-run-buildkite-plugin-test-job-id' >&2; exit 1"
 
   run "$PLUGIN_DIR/hooks/command"
 
@@ -279,133 +299,40 @@ teardown() {
     "create --name docker-run-buildkite-plugin-test-job-id --tty ubuntu:24.04 : true" \
     "start --attach docker-run-buildkite-plugin-test-job-id : true" \
     "${INSPECT_WORKDIR} docker-run-buildkite-plugin-test-job-id : echo /workdir" \
-    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage - : echo tar" \
-    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage * : echo 'write /builds/job/copy/lcov.info: no space left on device' >&2; exit 1"
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage/. - : echo tar" \
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage/. coverage : echo 'write /builds/job/coverage/lcov.info: no space left on device' >&2; exit 1"
 
   run "$PLUGIN_DIR/hooks/command"
 
   assert_failure 1
   assert_line "^^^ +++"
   assert_line "Error: could not copy /workdir/coverage out of the container to coverage"
-  assert_line "write /builds/job/copy/lcov.info: no space left on device"
-  [[ ! -e coverage ]]
+  assert_line "write /builds/job/coverage/lcov.info: no space left on device"
 }
 
-@test "copy-out leaves to as it was when the copy fails partway" {
-  export BUILDKITE_PLUGIN_DOCKER_RUN_COPY_OUT_0="coverage:coverage"
-  mkdir coverage
-  echo earlier > coverage/lcov.info
-
-  stub docker \
-    "pull ubuntu:24.04 : true" \
-    "create --name docker-run-buildkite-plugin-test-job-id --tty ubuntu:24.04 : true" \
-    "start --attach docker-run-buildkite-plugin-test-job-id : true" \
-    "${INSPECT_WORKDIR} docker-run-buildkite-plugin-test-job-id : echo /workdir" \
-    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage - : echo tar" \
-    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage * : mkdir \$4 && echo partial > \$4/lcov.info; exit 1"
-
-  run "$PLUGIN_DIR/hooks/command"
-
-  assert_failure 1
-  assert_equal "$(cat coverage/lcov.info)" "earlier"
-}
-
-@test "copy-out keeps the command's exit status when it has nowhere to stage a copy" {
-  # A working directory that cannot be written to is a failed copy like any
-  # other: it must not end the hook on the spot with mktemp's status.
-  export BUILDKITE_PLUGIN_DOCKER_RUN_COPY_OUT_0="coverage:coverage"
+@test "copy-out keeps the command's exit status when it cannot create the directories above to" {
+  # A failed copy like any other: it must not end the hook on the spot with
+  # mkdir's status, and docker is not asked to copy into a directory that is
+  # not there.
+  export BUILDKITE_PLUGIN_DOCKER_RUN_COPY_OUT_0="coverage:reports/coverage"
   export BUILDKITE_PLUGIN_DOCKER_RUN_COPY_OUT_1="docs:docs"
-  mkdir "${BATS_TEST_TMPDIR}/shims"
-  printf '#!/bin/sh\necho "mktemp: failed to create directory" >&2\nexit 1\n' > "${BATS_TEST_TMPDIR}/shims/mktemp"
-  chmod +x "${BATS_TEST_TMPDIR}/shims/mktemp"
+  echo "not a directory" > reports
 
   stub docker \
     "pull ubuntu:24.04 : true" \
     "create --name docker-run-buildkite-plugin-test-job-id --tty ubuntu:24.04 : true" \
     "start --attach docker-run-buildkite-plugin-test-job-id : exit 3" \
     "${INSPECT_WORKDIR} docker-run-buildkite-plugin-test-job-id : echo /workdir" \
-    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage - : echo tar" \
-    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/docs - : echo tar"
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage/. - : echo tar" \
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/docs/. - : echo tar" \
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/docs/. docs : mkdir \$4 && echo documented > \$4/index.html"
 
-  run env PATH="${BATS_TEST_TMPDIR}/shims:${PATH}" "$PLUGIN_DIR/hooks/command"
+  run "$PLUGIN_DIR/hooks/command"
 
   assert_failure 3
-  assert_line "Error: could not copy /workdir/coverage out of the container to coverage"
-  assert_line "Error: could not copy /workdir/docs out of the container to docs"
-}
-
-@test "copy-out leaves a to it cannot remove whole as it was" {
-  # rm -rf would remove lcov.info and then fail on html/, leaving part of to
-  # and none of the copy. Root can remove anything, so only a non-root run
-  # reaches this.
-  [[ "$(id -u)" -ne 0 ]] || skip "root can remove any to"
-  export BUILDKITE_PLUGIN_DOCKER_RUN_COPY_OUT_0="coverage:coverage"
-  mkdir -p coverage/html
-  echo earlier > coverage/lcov.info
-  echo earlier > coverage/html/index.html
-  chmod a-w coverage/html
-
-  stub docker \
-    "pull ubuntu:24.04 : true" \
-    "create --name docker-run-buildkite-plugin-test-job-id --tty ubuntu:24.04 : true" \
-    "start --attach docker-run-buildkite-plugin-test-job-id : true" \
-    "${INSPECT_WORKDIR} docker-run-buildkite-plugin-test-job-id : echo /workdir" \
-    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage - : echo tar" \
-    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage * : mkdir \$4 && echo covered > \$4/lcov.info"
-
-  run "$PLUGIN_DIR/hooks/command"
-
-  assert_failure 1
-  assert_line "Error: could not copy /workdir/coverage out of the container to coverage"
-  assert_line "coverage holds a directory this agent cannot write to, so it was left as it was."
-  assert_equal "$(cat coverage/lcov.info)" "earlier"
-  assert_equal "$(cat coverage/html/index.html)" "earlier"
-  assert_equal "$(ls -A)" "coverage"
-}
-
-@test "copy-out replaces an empty directory it cannot write to" {
-  # The mount point docker leaves in the checkout for a volume is root's and
-  # empty, and goes with its parent like any empty directory.
-  [[ "$(id -u)" -ne 0 ]] || skip "root can remove any to"
-  export BUILDKITE_PLUGIN_DOCKER_RUN_COPY_OUT_0="node_modules:node_modules"
-  mkdir node_modules
-  chmod a-w node_modules
-
-  stub docker \
-    "pull ubuntu:24.04 : true" \
-    "create --name docker-run-buildkite-plugin-test-job-id --tty ubuntu:24.04 : true" \
-    "start --attach docker-run-buildkite-plugin-test-job-id : true" \
-    "${INSPECT_WORKDIR} docker-run-buildkite-plugin-test-job-id : echo /workdir" \
-    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/node_modules - : echo tar" \
-    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/node_modules * : mkdir \$4 && echo installed > \$4/package.json"
-
-  run "$PLUGIN_DIR/hooks/command"
-
-  assert_success
-  assert_equal "$(cat node_modules/package.json)" "installed"
-}
-
-@test "copy-out leaves a to whose directory it cannot write to as it was" {
-  # rm -rf would empty reports/coverage and then fail to remove it.
-  [[ "$(id -u)" -ne 0 ]] || skip "root can remove any to"
-  export BUILDKITE_PLUGIN_DOCKER_RUN_COPY_OUT_0="coverage:reports/coverage"
-  mkdir -p reports/coverage
-  echo earlier > reports/coverage/lcov.info
-  chmod a-w reports
-
-  stub docker \
-    "pull ubuntu:24.04 : true" \
-    "create --name docker-run-buildkite-plugin-test-job-id --tty ubuntu:24.04 : true" \
-    "start --attach docker-run-buildkite-plugin-test-job-id : true" \
-    "${INSPECT_WORKDIR} docker-run-buildkite-plugin-test-job-id : echo /workdir" \
-    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage - : echo tar" \
-    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage * : mkdir \$4 && echo covered > \$4/lcov.info"
-
-  run "$PLUGIN_DIR/hooks/command"
-
-  assert_failure 1
-  assert_line "reports/coverage holds a directory this agent cannot write to, so it was left as it was."
-  assert_equal "$(cat reports/coverage/lcov.info)" "earlier"
+  assert_line "Error: could not copy /workdir/coverage out of the container to reports/coverage"
+  assert_equal "$(cat reports)" "not a directory"
+  assert_equal "$(cat docs/index.html)" "documented"
 }
 
 @test "copy-out still copies the entries after one that failed" {
@@ -417,15 +344,17 @@ teardown() {
     "create --name docker-run-buildkite-plugin-test-job-id --tty ubuntu:24.04 : true" \
     "start --attach docker-run-buildkite-plugin-test-job-id : true" \
     "${INSPECT_WORKDIR} docker-run-buildkite-plugin-test-job-id : echo /workdir" \
-    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage - : echo tar" \
-    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage * : echo 'write /builds/job/copy/lcov.info: no space left on device' >&2; exit 1" \
-    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/docs - : echo tar" \
-    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/docs * : echo documented > \$4"
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage/. - : echo tar" \
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage/. coverage : echo 'write /builds/job/coverage/lcov.info: no space left on device' >&2; exit 1" \
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/docs/. - : echo tar" \
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/docs/. docs : mkdir \$4 && echo documented > \$4/index.html"
 
   run "$PLUGIN_DIR/hooks/command"
 
   assert_failure 1
-  assert_equal "$(cat docs)" "documented"
+  assert_line "Error: could not copy /workdir/coverage out of the container to coverage"
+  assert_line "Copied /workdir/docs to docs"
+  assert_equal "$(cat docs/index.html)" "documented"
 }
 
 @test "copy-out keeps a failed command's status when the copy fails too" {
@@ -436,12 +365,13 @@ teardown() {
     "create --name docker-run-buildkite-plugin-test-job-id --tty ubuntu:24.04 : true" \
     "start --attach docker-run-buildkite-plugin-test-job-id : exit 3" \
     "${INSPECT_WORKDIR} docker-run-buildkite-plugin-test-job-id : echo /workdir" \
-    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage - : echo tar" \
-    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage * : echo 'write /builds/job/copy/lcov.info: no space left on device' >&2; exit 1"
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage/. - : echo tar" \
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage/. coverage : echo 'write /builds/job/coverage/lcov.info: no space left on device' >&2; exit 1"
 
   run "$PLUGIN_DIR/hooks/command"
 
   assert_failure 3
+  assert_line "Error: could not copy /workdir/coverage out of the container to coverage"
 }
 
 @test "copy-out fails the hook when there is no container to copy out of" {
@@ -472,95 +402,6 @@ teardown() {
   refute_output --partial "copying out"
 }
 
-# --- a to that already holds what was copied ---
-
-@test "copy-out leaves a to that already holds the same files in place" {
-  export BUILDKITE_PLUGIN_DOCKER_RUN_COPY_OUT_0="coverage:coverage"
-  mkdir coverage
-  echo covered > coverage/lcov.info
-  before="$(ls -di coverage)"
-
-  stub docker \
-    "pull ubuntu:24.04 : true" \
-    "create --name docker-run-buildkite-plugin-test-job-id --tty ubuntu:24.04 : true" \
-    "start --attach docker-run-buildkite-plugin-test-job-id : true" \
-    "${INSPECT_WORKDIR} docker-run-buildkite-plugin-test-job-id : echo /workdir" \
-    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage - : echo tar" \
-    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage * : mkdir \$4 && echo covered > \$4/lcov.info"
-
-  run "$PLUGIN_DIR/hooks/command"
-
-  assert_success
-  assert_line "Skipped /workdir/coverage: coverage already holds the same files"
-  # The same directory as before, not an identical one moved into its place.
-  assert_equal "$(ls -di coverage)" "$before"
-  assert_equal "$(ls -A)" "coverage"
-}
-
-@test "copy-out replaces a to that holds the same file names with different contents" {
-  export BUILDKITE_PLUGIN_DOCKER_RUN_COPY_OUT_0="coverage:coverage"
-  mkdir coverage
-  echo stale > coverage/lcov.info
-
-  stub docker \
-    "pull ubuntu:24.04 : true" \
-    "create --name docker-run-buildkite-plugin-test-job-id --tty ubuntu:24.04 : true" \
-    "start --attach docker-run-buildkite-plugin-test-job-id : true" \
-    "${INSPECT_WORKDIR} docker-run-buildkite-plugin-test-job-id : echo /workdir" \
-    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage - : echo tar" \
-    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage * : mkdir \$4 && echo covered > \$4/lcov.info"
-
-  run "$PLUGIN_DIR/hooks/command"
-
-  assert_success
-  assert_line "Copied /workdir/coverage to coverage"
-  assert_equal "$(cat coverage/lcov.info)" "covered"
-}
-
-@test "copy-out replaces a file at to with a directory that holds a file of the same name and content" {
-  # `diff` between a directory and a file compares the file with the directory's
-  # entry of that name, and would call these two the same.
-  export BUILDKITE_PLUGIN_DOCKER_RUN_COPY_OUT_0="coverage:lcov.info"
-  echo covered > lcov.info
-
-  stub docker \
-    "pull ubuntu:24.04 : true" \
-    "create --name docker-run-buildkite-plugin-test-job-id --tty ubuntu:24.04 : true" \
-    "start --attach docker-run-buildkite-plugin-test-job-id : true" \
-    "${INSPECT_WORKDIR} docker-run-buildkite-plugin-test-job-id : echo /workdir" \
-    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage - : echo tar" \
-    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage * : mkdir \$4 && echo covered > \$4/lcov.info"
-
-  run "$PLUGIN_DIR/hooks/command"
-
-  assert_success
-  assert_line "Copied /workdir/coverage to lcov.info"
-  assert_equal "$(cat lcov.info/lcov.info)" "covered"
-}
-
-@test "copy-out replaces a directory at to with a file, whatever the directory holds" {
-  # The copy is staged as a file named `copy`, which is the entry `diff` would
-  # compare it with inside the directory.
-  export BUILDKITE_PLUGIN_DOCKER_RUN_COPY_OUT_0="/out/report.txt:reports"
-  mkdir reports
-  echo report > reports/copy
-
-  stub docker \
-    "pull ubuntu:24.04 : true" \
-    "create --name docker-run-buildkite-plugin-test-job-id --tty ubuntu:24.04 : true" \
-    "start --attach docker-run-buildkite-plugin-test-job-id : true" \
-    "${INSPECT_WORKDIR} docker-run-buildkite-plugin-test-job-id : echo /workdir" \
-    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/out/report.txt - : echo tar" \
-    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/out/report.txt * : echo report > \$4"
-
-  run "$PLUGIN_DIR/hooks/command"
-
-  assert_success
-  assert_line "Copied /out/report.txt to reports"
-  [[ -f reports ]]
-  assert_equal "$(cat reports)" "report"
-}
-
 # --- the other hook phases copy in the hook that ran the container ---
 
 @test "copy-out copies in the pre-command hook, from that hook's container" {
@@ -572,14 +413,14 @@ teardown() {
     "create --name docker-run-buildkite-plugin-test-job-id-pre-command --tty ubuntu:24.04 : true" \
     "start --attach docker-run-buildkite-plugin-test-job-id-pre-command : true" \
     "${INSPECT_WORKDIR} docker-run-buildkite-plugin-test-job-id-pre-command : echo /workdir" \
-    "cp --follow-link docker-run-buildkite-plugin-test-job-id-pre-command:/workdir/coverage - : echo tar" \
-    "cp --follow-link docker-run-buildkite-plugin-test-job-id-pre-command:/workdir/coverage * : echo covered > \$4"
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id-pre-command:/workdir/coverage/. - : echo tar" \
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id-pre-command:/workdir/coverage/. coverage : mkdir \$4 && echo covered > \$4/lcov.info"
 
   run "$PLUGIN_DIR/hooks/pre-command"
 
   assert_success
   assert_line "~~~ :docker: copying out"
-  assert_equal "$(cat coverage)" "covered"
+  assert_equal "$(cat coverage/lcov.info)" "covered"
 }
 
 @test "copy-out copies in the post-command hook, from that hook's container" {
@@ -591,43 +432,14 @@ teardown() {
     "create --name docker-run-buildkite-plugin-test-job-id-post-command --tty ubuntu:24.04 : true" \
     "start --attach docker-run-buildkite-plugin-test-job-id-post-command : true" \
     "${INSPECT_WORKDIR} docker-run-buildkite-plugin-test-job-id-post-command : echo /workdir" \
-    "cp --follow-link docker-run-buildkite-plugin-test-job-id-post-command:/workdir/coverage - : echo tar" \
-    "cp --follow-link docker-run-buildkite-plugin-test-job-id-post-command:/workdir/coverage * : echo covered > \$4"
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id-post-command:/workdir/coverage/. - : echo tar" \
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id-post-command:/workdir/coverage/. coverage : mkdir \$4 && echo covered > \$4/lcov.info"
 
   run "$PLUGIN_DIR/hooks/post-command"
 
   assert_success
   assert_line "~~~ :docker: copying out"
-  assert_equal "$(cat coverage)" "covered"
-}
-
-# --- pre-exit clears up after a hook that was killed mid-copy ---
-
-@test "pre-exit removes a scratch directory a killed hook left in the working directory" {
-  export BUILDKITE_PLUGIN_DOCKER_RUN_COPY_OUT_0="coverage:coverage"
-  mkdir -p .docker-run-copy-out.zqejq3/copy
-  echo partial > .docker-run-copy-out.zqejq3/copy/lcov.info
-  echo kept > .env
-
-  stub docker \
-    "rm -f docker-run-buildkite-plugin-test-job-id : true"
-
-  run "$PLUGIN_DIR/hooks/pre-exit"
-
-  assert_success
-  assert_equal "$(ls -A)" ".env"
-}
-
-@test "pre-exit leaves the working directory alone without copy-out" {
-  mkdir .docker-run-copy-out.zqejq3
-
-  stub docker \
-    "rm -f docker-run-buildkite-plugin-test-job-id : true"
-
-  run "$PLUGIN_DIR/hooks/pre-exit"
-
-  assert_success
-  assert_equal "$(ls -A)" ".docker-run-copy-out.zqejq3"
+  assert_equal "$(cat coverage/lcov.info)" "covered"
 }
 
 # --- malformed entries fail before the container is created ---

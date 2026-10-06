@@ -43,8 +43,8 @@ if plugin_read_list_into_result "BUILDKITE_PLUGIN_DOCKER_RUN_COPY_OUT"; then
     fi
     to="${entry#*:}"
     to="${to#./}"
-    # A trailing slash says `to` is a directory. It is kept, as a single one, so
-    # that a `from` that turns out to be a file can be refused after the copy.
+    # A trailing slash says `to` is a directory, to `docker cp` as well. It is
+    # kept, as a single one.
     to_slash=""
     while [[ "$to" == */ ]]; do
       to="${to%/}"

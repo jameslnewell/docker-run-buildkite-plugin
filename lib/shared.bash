@@ -50,112 +50,38 @@ plugin_read_list_into_result() {
   [[ ${#result[@]} -gt 0 ]]
 }
 
-# What copy-out's scratch directories in the job's working directory are named
-# before mktemp's suffix. The run hook creates them and pre-exit removes any that
-# a killed hook left behind.
-COPY_OUT_SCRATCH=".docker-run-copy-out"
-
-# Copies one path out of a stopped container to `to` in the job's working
-# directory, replacing whatever is there. A `from` the container does not have
-# is logged and skipped; any other failure returns non-zero.
+# Copies one path out of a stopped container to `to` on the agent, a directory
+# as its contents. A `from` the container does not have is logged and skipped;
+# any other failure returns non-zero.
 plugin_copy_out() {
   local container="$1"
   local from="$2"
   local to="$3"
-  local dest scratch
+  local source="$from"
   local copy_status=0
-  local to_is_directory=false
-  if [[ "$to" == */ ]]; then
-    to_is_directory=true
-    to="${to%/}"
-  fi
-  dest="$(pwd)/${to}"
 
-  # `docker cp` cannot be asked whether a path exists, and how it words a
-  # missing one varies between Docker versions. Asking for the path as a tar
-  # stream answers it: a byte only arrives when the path is there. No byte
-  # arrives when the container has gone or its filesystem cannot be read
-  # either, so the path is only called missing if / does answer. If it does
-  # not, the copy below fails with docker's own error.
-  #
-  # `--follow-link` here and on the copy: without it a `from` that is a symlink
-  # is copied as the link, which points nowhere useful on the agent.
-  if [[ -z "$(docker cp --follow-link "${container}:${from}" - 2>/dev/null | head -c 1)" \
+  # `docker cp` puts a directory inside a `to` that already exists. Its contents
+  # are asked for instead (`/.`), which only a directory has. `docker cp` can't
+  # be asked what a path is, or whether it is there, and how it words a missing
+  # one varies between Docker versions. Asking for the path as a tar stream
+  # answers both: a byte only arrives when the path is there. None arrives when
+  # the container has gone or its filesystem can't be read either, so the path
+  # is only called missing if / does answer; otherwise the copy below fails with
+  # docker's own error.
+  if [[ -n "$(docker cp --follow-link "${container}:${from%/}/." - 2>/dev/null | head -c 1)" ]]; then
+    source="${from%/}/."
+  elif [[ -z "$(docker cp --follow-link "${container}:${from}" - 2>/dev/null | head -c 1)" \
     && -n "$(docker cp "${container}:/" - 2>/dev/null | head -c 1)" ]]; then
     echo "Skipped ${from}: not found in the container"
     return 0
   fi
 
-  # The copy lands in a scratch directory and is then moved into place:
-  # `docker cp` into a directory that already exists nests the copy inside it,
-  # and removing `to` first would remove the source whenever a mount puts one
-  # inside the other.
-  #
-  # The scratch directory is in the job's working directory rather than the
-  # system's temporary one, so the move is a rename. /tmp is often a tmpfs too
-  # small for the output, and a move across filesystems that failed part-way
-  # would leave `to` half replaced.
-  if ! scratch="$(mktemp -d "$(pwd)/${COPY_OUT_SCRATCH}.XXXXXX")"; then
-    echo "^^^ +++"
-    echo "Error: could not copy ${from} out of the container to ${to}"
-    return 1
-  fi
-
-  set -x
-  docker cp --follow-link "${container}:${from}" "${scratch}/copy" || { copy_status=$?; } 2>/dev/null
-  { set +x; } 2>/dev/null
-
-  # With the checkout mounted, a `from` that contains the working directory
-  # contains this scratch directory too. Its name is unique to this copy, so
-  # anything of that name inside the copy is the scratch directory itself.
+  mkdir -p "$(dirname "$to")" || copy_status=$?
   if [[ "$copy_status" -eq 0 ]]; then
-    find "${scratch}/copy" -name "${scratch##*/}" -prune -exec rm -rf {} \; || copy_status=$?
+    set -x
+    docker cp --follow-link "${container}:${source}" "$to" || { copy_status=$?; } 2>/dev/null
+    { set +x; } 2>/dev/null
   fi
-
-  # `to` is replaced by the copy, never copied into. So a file cannot go to a
-  # `to` written as a directory: it would replace that directory with a file of
-  # its name, where `cp` would have put the file inside it.
-  if [[ "$copy_status" -eq 0 && "$to_is_directory" == "true" && ! -d "${scratch}/copy" ]]; then
-    rm -rf "$scratch"
-    echo "^^^ +++"
-    echo "Error: ${to}/ ends in / but ${from} is a file. Name the file in <to>, as in ${to}/${from##*/}"
-    return 1
-  fi
-
-  # A `to` that already holds the same files is left alone. That is the mounted
-  # checkout: `from` and `to` are then one directory, which the container wrote
-  # as root unless told otherwise, and an agent that is not root could not
-  # remove it to put a copy of itself in its place.
-  #
-  # Both have to be the same kind first. Given a file and a directory, `diff`
-  # compares the file with the entry of its name inside the directory.
-  if [[ "$copy_status" -eq 0 ]] \
-    && [[ -d "${scratch}/copy" && -d "$dest" || -f "${scratch}/copy" && -f "$dest" ]] \
-    && diff -rq "${scratch}/copy" "$dest" >/dev/null 2>&1; then
-    rm -rf "$scratch"
-    echo "Skipped ${from}: ${to} already holds the same files"
-    return 0
-  fi
-
-  # `rm -rf` removes what it can and fails on the rest, so a `to` it cannot
-  # remove whole would lose part of what it holds, and the copy would then be
-  # thrown away too. Through the mounted checkout that is the command's own
-  # output. Such a `to` is left as it was and the entry fails instead. Only a
-  # directory with something in it needs to be writable: an empty one, such as
-  # the mount point docker leaves for a volume, goes with its parent.
-  if [[ "$copy_status" -eq 0 && -d "$dest" && ! -L "$dest" ]] \
-    && [[ ! -w "$(dirname "$dest")" || -n "$(find "$dest" -type d -exec sh -c 'for d; do [ -w "$d" ] || [ -z "$(ls -A "$d")" ] || echo "$d"; done' sh {} + 2>&1 | head -n 1)" ]]; then
-    rm -rf "$scratch"
-    echo "^^^ +++"
-    echo "Error: could not copy ${from} out of the container to ${to}"
-    echo "${to} holds a directory this agent cannot write to, so it was left as it was."
-    return 1
-  fi
-
-  if [[ "$copy_status" -eq 0 ]]; then
-    { mkdir -p "$(dirname "$dest")" && rm -rf "$dest" && mv "${scratch}/copy" "$dest"; } || copy_status=$?
-  fi
-  rm -rf "$scratch"
 
   if [[ "$copy_status" -ne 0 ]]; then
     echo "^^^ +++"

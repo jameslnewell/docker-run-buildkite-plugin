@@ -209,7 +209,7 @@ in_job_dir() {
   [[ "$(cat reports/junit.xml)" == "report" ]]
 }
 
-@test "integration: copy-out copies what a symlinked from points to, not the link" {
+@test "integration: copy-out copies the directory a symlinked from points to, not the link" {
   skip_if_no_docker
   in_job_dir
 
@@ -223,7 +223,39 @@ in_job_dir() {
 
   [[ $status -eq 0 ]]
   [[ ! -L coverage ]]
+  [[ "$(ls -A coverage)" == "lcov.info" ]]
   [[ "$(cat coverage/lcov.info)" == "covered" ]]
+}
+
+@test "integration: copy-out copies the file a symlinked from points to, not the link" {
+  skip_if_no_docker
+  in_job_dir
+
+  export BUILDKITE_PLUGIN_DOCKER_RUN_WORKDIR="/workdir"
+  export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_2="echo report > /tmp/junit.xml && ln -s /tmp/junit.xml latest.xml"
+  export BUILDKITE_PLUGIN_DOCKER_RUN_COPY_OUT_0="latest.xml:junit.xml"
+
+  run bash "$PLUGIN_PATH/hooks/command"
+
+  [[ $status -eq 0 ]]
+  [[ ! -L junit.xml ]]
+  [[ "$(cat junit.xml)" == "report" ]]
+}
+
+@test "integration: copy-out copies an empty directory" {
+  skip_if_no_docker
+  in_job_dir
+
+  export BUILDKITE_PLUGIN_DOCKER_RUN_WORKDIR="/workdir"
+  export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_2="mkdir coverage"
+  export BUILDKITE_PLUGIN_DOCKER_RUN_COPY_OUT_0="coverage:coverage"
+
+  run bash "$PLUGIN_PATH/hooks/command"
+
+  [[ $status -eq 0 ]]
+  [[ "$output" == *"Copied /workdir/coverage to coverage"* ]]
+  [[ -d coverage ]]
+  [[ -z "$(ls -A coverage)" ]]
 }
 
 @test "integration: copy-out skips a from the container does not have" {
@@ -233,6 +265,21 @@ in_job_dir() {
   export BUILDKITE_PLUGIN_DOCKER_RUN_WORKDIR="/workdir"
   export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_2="true"
   export BUILDKITE_PLUGIN_DOCKER_RUN_COPY_OUT_0="coverage:backend/coverage"
+
+  run bash "$PLUGIN_PATH/hooks/command"
+
+  [[ $status -eq 0 ]]
+  [[ "$output" == *"Skipped /workdir/coverage: not found in the container"* ]]
+  [[ -z "$(ls -A)" ]]
+}
+
+@test "integration: copy-out skips a from that is a symlink to nothing" {
+  skip_if_no_docker
+  in_job_dir
+
+  export BUILDKITE_PLUGIN_DOCKER_RUN_WORKDIR="/workdir"
+  export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_2="ln -s /nowhere coverage"
+  export BUILDKITE_PLUGIN_DOCKER_RUN_COPY_OUT_0="coverage:coverage"
 
   run bash "$PLUGIN_PATH/hooks/command"
 
@@ -255,43 +302,42 @@ in_job_dir() {
   [[ "$(cat coverage/lcov.info)" == "covered" ]]
 }
 
-@test "integration: copy-out replaces an existing to rather than copying into it" {
+@test "integration: copy-out copies a directory's contents into a to that is already there, and leaves what else it holds" {
   skip_if_no_docker
   in_job_dir
 
   mkdir -p backend/coverage
-  echo stale > backend/coverage/stale.txt
+  echo earlier > backend/coverage/earlier.txt
+  echo earlier > backend/coverage/lcov.info
   export BUILDKITE_PLUGIN_DOCKER_RUN_WORKDIR="/workdir"
-  export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_2="mkdir coverage && echo covered > coverage/lcov.info"
+  export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_2="mkdir -p coverage/html && echo covered > coverage/lcov.info && echo page > coverage/html/index.html"
   export BUILDKITE_PLUGIN_DOCKER_RUN_COPY_OUT_0="coverage:backend/coverage"
 
   run bash "$PLUGIN_PATH/hooks/command"
 
   [[ $status -eq 0 ]]
-  [[ "$(ls -A backend/coverage)" == "lcov.info" ]]
+  # Not nested at backend/coverage/coverage, as a plain `docker cp` would.
+  [[ "$(ls -A backend/coverage)" == $'earlier.txt\nhtml\nlcov.info' ]]
+  [[ "$(cat backend/coverage/earlier.txt)" == "earlier" ]]
   [[ "$(cat backend/coverage/lcov.info)" == "covered" ]]
+  [[ "$(cat backend/coverage/html/index.html)" == "page" ]]
 }
 
-@test "integration: copy-out leaves to in place when the mounted checkout already put the output there" {
+@test "integration: copy-out copies a file into a to that is a directory, and leaves what else it holds" {
   skip_if_no_docker
   in_job_dir
 
-  # The default mount-checkout puts the job's working directory at /workdir, so
-  # the container's /workdir/coverage is the agent's coverage. On a daemon
-  # without user-namespace remapping the container's files are root's, and
-  # the agent could not remove them to put the copy in their place.
-  unset BUILDKITE_PLUGIN_DOCKER_RUN_MOUNT_CHECKOUT
-  mounted_job_dir="$PWD"
-  export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_2="mkdir coverage && echo covered > coverage/lcov.info"
-  export BUILDKITE_PLUGIN_DOCKER_RUN_COPY_OUT_0="coverage:coverage"
+  mkdir test-results
+  echo earlier > test-results/earlier.xml
+  export BUILDKITE_PLUGIN_DOCKER_RUN_WORKDIR="/workdir"
+  export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_2="echo report > junit.xml"
+  export BUILDKITE_PLUGIN_DOCKER_RUN_COPY_OUT_0="junit.xml:test-results"
 
   run bash "$PLUGIN_PATH/hooks/command"
 
   [[ $status -eq 0 ]]
-  [[ "$output" == *"Skipped /workdir/coverage: coverage already holds the same files"* ]]
-  [[ "$(ls -A)" == "coverage" ]]
-  [[ "$(ls -A coverage)" == "lcov.info" ]]
-  [[ "$(cat coverage/lcov.info)" == "covered" ]]
+  [[ "$(ls -A test-results)" == $'earlier.xml\njunit.xml' ]]
+  [[ "$(cat test-results/junit.xml)" == "report" ]]
 }
 
 @test "integration: copy-out copies a mounted from to a to elsewhere in the checkout" {
@@ -310,41 +356,26 @@ in_job_dir() {
   [[ "$(cat reports/coverage/lcov.info)" == "covered" ]]
 }
 
-@test "integration: copy-out of a from that contains the working directory leaves its own scratch copy out" {
-  skip_if_no_docker
-  in_job_dir
-
-  # /workdir is the job's working directory, where the scratch copy is made, so
-  # the scratch copy is part of what docker copies. The hook takes it back out.
-  unset BUILDKITE_PLUGIN_DOCKER_RUN_MOUNT_CHECKOUT
-  mounted_job_dir="$PWD"
-  export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_2="echo built > app.js"
-  export BUILDKITE_PLUGIN_DOCKER_RUN_COPY_OUT_0=".:snapshot"
-
-  run bash "$PLUGIN_PATH/hooks/command"
-
-  [[ $status -eq 0 ]]
-  [[ "$(ls -A snapshot)" == "app.js" ]]
-  [[ "$(cat snapshot/app.js)" == "built" ]]
-}
-
 @test "integration: copy-out copies out of a volume mounted inside the mounted checkout" {
   skip_if_no_docker
   in_job_dir
 
   # /workdir/node_modules is the volume, not the checkout's directory of that
-  # name, so the same path on both sides still has different contents.
+  # name. That one is the empty mount point docker made for it, which is root's
+  # on a daemon without user-namespace remapping and so not somewhere the agent
+  # can copy to.
   unset BUILDKITE_PLUGIN_DOCKER_RUN_MOUNT_CHECKOUT
   mounted_job_dir="$PWD"
   export BUILDKITE_PLUGIN_DOCKER_RUN_VOLUMES_0="/workdir/node_modules"
   export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_2="echo installed > node_modules/package.json"
-  export BUILDKITE_PLUGIN_DOCKER_RUN_COPY_OUT_0="node_modules:node_modules"
+  export BUILDKITE_PLUGIN_DOCKER_RUN_COPY_OUT_0="node_modules:deps/node_modules"
 
   run bash "$PLUGIN_PATH/hooks/command"
 
   [[ $status -eq 0 ]]
-  [[ "$output" == *"Copied /workdir/node_modules to node_modules"* ]]
-  [[ "$(cat node_modules/package.json)" == "installed" ]]
+  [[ "$output" == *"Copied /workdir/node_modules to deps/node_modules"* ]]
+  [[ "$(cat deps/node_modules/package.json)" == "installed" ]]
+  [[ -z "$(ls -A node_modules)" ]]
 }
 
 @test "integration: copy-out copies every entry" {
