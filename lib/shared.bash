@@ -68,6 +68,9 @@ plugin_copy_out() {
   # the container has gone or its filesystem can't be read either, so the path
   # is only called missing if / does answer; otherwise the copy below fails with
   # docker's own error.
+  #
+  # `--follow-link` here and on the copy: without it a `from` that is a symlink
+  # is copied as the link, which points nowhere useful on the agent.
   if [[ -n "$(docker cp --follow-link "${container}:${from%/}/." - 2>/dev/null | head -c 1)" ]]; then
     source="${from%/}/."
   elif [[ -z "$(docker cp --follow-link "${container}:${from}" - 2>/dev/null | head -c 1)" \
@@ -76,6 +79,7 @@ plugin_copy_out() {
     return 0
   fi
 
+  # `docker cp` creates `to` but not the directory it is in.
   mkdir -p "$(dirname "$to")" || copy_status=$?
   if [[ "$copy_status" -eq 0 ]]; then
     set -x
