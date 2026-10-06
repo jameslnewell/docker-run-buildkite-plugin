@@ -41,24 +41,8 @@ if plugin_read_list_into_result "BUILDKITE_PLUGIN_DOCKER_RUN_COPY_OUT"; then
       echo "+++ Error: Each copy-out entry must be \"<from>:<to>\", a path in the container and a path in the job's working directory. Got \"${entry}\"."
       exit 1
     fi
-    to="${entry#*:}"
-    to="${to#./}"
-    # A trailing slash says `to` is a directory, to `docker cp` as well. It is
-    # kept, as a single one.
-    to_slash=""
-    while [[ "$to" == */ ]]; do
-      to="${to%/}"
-      to_slash="/"
-    done
-    # Whatever is at `to` is removed to make way for the copy, so `to` may not
-    # name the working directory itself or anything outside it.
-    if [[ -z "$to" || "$to" == /* || "/${to}/" == */./* || "/${to}/" == */../* ]]; then
-      echo "+++ Error: The <to> of a copy-out entry must be a path inside the job's working directory. Got \"${entry}\"."
-      echo "The copy replaces whatever is at <to>, so it cannot be absolute, have a \".\" or \"..\" component, or be the working directory itself."
-      exit 1
-    fi
     COPY_OUT_FROM+=("${entry%%:*}")
-    COPY_OUT_TO+=("${to}${to_slash}")
+    COPY_OUT_TO+=("${entry#*:}")
   done
 fi
 

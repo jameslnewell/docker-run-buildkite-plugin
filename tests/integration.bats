@@ -340,6 +340,38 @@ in_job_dir() {
   [[ "$(cat test-results/junit.xml)" == "report" ]]
 }
 
+@test "integration: copy-out copies a directory's contents into the working directory when to is ." {
+  skip_if_no_docker
+  in_job_dir
+
+  echo kept > kept.txt
+  export BUILDKITE_PLUGIN_DOCKER_RUN_WORKDIR="/workdir"
+  export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_2="mkdir dist && echo built > dist/app.js"
+  export BUILDKITE_PLUGIN_DOCKER_RUN_COPY_OUT_0="dist:."
+
+  run bash "$PLUGIN_PATH/hooks/command"
+
+  [[ $status -eq 0 ]]
+  [[ "$(ls -A)" == $'app.js\nkept.txt' ]]
+  [[ "$(cat app.js)" == "built" ]]
+  [[ "$(cat kept.txt)" == "kept" ]]
+}
+
+@test "integration: copy-out copies to a to outside the working directory" {
+  skip_if_no_docker
+  in_job_dir
+
+  export BUILDKITE_PLUGIN_DOCKER_RUN_WORKDIR="/workdir"
+  export BUILDKITE_PLUGIN_DOCKER_RUN_COMMAND_2="mkdir coverage && echo covered > coverage/lcov.info"
+  export BUILDKITE_PLUGIN_DOCKER_RUN_COPY_OUT_0="coverage:${BATS_TEST_TMPDIR}/elsewhere/coverage"
+
+  run bash "$PLUGIN_PATH/hooks/command"
+
+  [[ $status -eq 0 ]]
+  [[ "$(cat "${BATS_TEST_TMPDIR}/elsewhere/coverage/lcov.info")" == "covered" ]]
+  [[ -z "$(ls -A)" ]]
+}
+
 @test "integration: copy-out copies a mounted from to a to elsewhere in the checkout" {
   skip_if_no_docker
   in_job_dir

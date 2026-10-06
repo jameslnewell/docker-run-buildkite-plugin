@@ -91,7 +91,7 @@ teardown() {
   assert_equal "$(cat coverage/lcov.info)" "covered"
 }
 
-@test "copy-out takes a leading ./ on either side and a trailing slash on to" {
+@test "copy-out takes a leading ./ off from, and hands to to docker as it is written" {
   export BUILDKITE_PLUGIN_DOCKER_RUN_COPY_OUT_0="./coverage:./backend/coverage/"
 
   stub docker \
@@ -100,13 +100,51 @@ teardown() {
     "start --attach docker-run-buildkite-plugin-test-job-id : true" \
     "${INSPECT_WORKDIR} docker-run-buildkite-plugin-test-job-id : echo /workdir" \
     "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage/. - : echo tar" \
-    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage/. backend/coverage/ : mkdir \$4 && echo covered > \$4/lcov.info"
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage/. ./backend/coverage/ : mkdir \$4 && echo covered > \$4/lcov.info"
 
   run "$PLUGIN_DIR/hooks/command"
 
   assert_success
-  assert_line "Copied /workdir/coverage to backend/coverage/"
+  assert_line "Copied /workdir/coverage to ./backend/coverage/"
   assert_equal "$(cat backend/coverage/lcov.info)" "covered"
+}
+
+@test "copy-out copies a directory's contents into the working directory when to is ." {
+  export BUILDKITE_PLUGIN_DOCKER_RUN_COPY_OUT_0="dist:."
+  echo kept > .env
+
+  stub docker \
+    "pull ubuntu:24.04 : true" \
+    "create --name docker-run-buildkite-plugin-test-job-id --tty ubuntu:24.04 : true" \
+    "start --attach docker-run-buildkite-plugin-test-job-id : true" \
+    "${INSPECT_WORKDIR} docker-run-buildkite-plugin-test-job-id : echo /workdir" \
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/dist/. - : echo tar" \
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/dist/. . : echo built > \$4/app.js"
+
+  run "$PLUGIN_DIR/hooks/command"
+
+  assert_success
+  assert_line "Copied /workdir/dist to ."
+  assert_equal "$(cat app.js)" "built"
+  assert_equal "$(cat .env)" "kept"
+}
+
+@test "copy-out copies to a to outside the working directory" {
+  export BUILDKITE_PLUGIN_DOCKER_RUN_COPY_OUT_0="coverage:${BATS_TEST_TMPDIR}/elsewhere/coverage"
+
+  stub docker \
+    "pull ubuntu:24.04 : true" \
+    "create --name docker-run-buildkite-plugin-test-job-id --tty ubuntu:24.04 : true" \
+    "start --attach docker-run-buildkite-plugin-test-job-id : true" \
+    "${INSPECT_WORKDIR} docker-run-buildkite-plugin-test-job-id : echo /workdir" \
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage/. - : echo tar" \
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage/. ${BATS_TEST_TMPDIR}/elsewhere/coverage : mkdir \$4 && echo covered > \$4/lcov.info"
+
+  run "$PLUGIN_DIR/hooks/command"
+
+  assert_success
+  assert_equal "$(cat "${BATS_TEST_TMPDIR}/elsewhere/coverage/lcov.info")" "covered"
+  assert_equal "$(ls -A)" ""
 }
 
 @test "copy-out copies a directory's contents to a to that is not there yet" {
@@ -496,71 +534,4 @@ teardown() {
 
   assert_failure 1
   assert_line --partial "Got \"docs\"."
-}
-
-# `to` is removed to make way for the copy, so these would otherwise delete the
-# checkout, or something outside it.
-
-@test "copy-out to the working directory itself fails before anything is pulled" {
-  export BUILDKITE_PLUGIN_DOCKER_RUN_COPY_OUT_0="dist:."
-  stub docker
-
-  run "$PLUGIN_DIR/hooks/command"
-
-  assert_failure 1
-  assert_line --partial "+++ Error: The <to> of a copy-out entry must be a path inside the job's working directory."
-}
-
-@test "copy-out to a path with a . component fails before anything is pulled, and says so" {
-  export BUILDKITE_PLUGIN_DOCKER_RUN_COPY_OUT_0="dist:backend/./dist"
-  stub docker
-
-  run "$PLUGIN_DIR/hooks/command"
-
-  assert_failure 1
-  assert_line --partial "+++ Error: The <to> of a copy-out entry must be a path inside the job's working directory."
-  assert_line --partial 'have a "." or ".." component'
-}
-
-# `./` and `/` are the working directory and the root with nothing left once the
-# prefix and the trailing slashes are stripped. Accepted, either would have the
-# copy remove the job's working directory.
-@test "copy-out to ./ fails before anything is pulled" {
-  export BUILDKITE_PLUGIN_DOCKER_RUN_COPY_OUT_0="dist:./"
-  stub docker
-
-  run "$PLUGIN_DIR/hooks/command"
-
-  assert_failure 1
-  assert_line --partial "+++ Error: The <to> of a copy-out entry must be a path inside the job's working directory."
-}
-
-@test "copy-out to / fails before anything is pulled" {
-  export BUILDKITE_PLUGIN_DOCKER_RUN_COPY_OUT_0="dist:/"
-  stub docker
-
-  run "$PLUGIN_DIR/hooks/command"
-
-  assert_failure 1
-  assert_line --partial "+++ Error: The <to> of a copy-out entry must be a path inside the job's working directory."
-}
-
-@test "copy-out to an absolute path fails before anything is pulled" {
-  export BUILDKITE_PLUGIN_DOCKER_RUN_COPY_OUT_0="dist:/var/lib/dist"
-  stub docker
-
-  run "$PLUGIN_DIR/hooks/command"
-
-  assert_failure 1
-  assert_line --partial "+++ Error: The <to> of a copy-out entry must be a path inside the job's working directory."
-}
-
-@test "copy-out to a path that climbs out of the working directory fails before anything is pulled" {
-  export BUILDKITE_PLUGIN_DOCKER_RUN_COPY_OUT_0="dist:backend/../../dist"
-  stub docker
-
-  run "$PLUGIN_DIR/hooks/command"
-
-  assert_failure 1
-  assert_line --partial "+++ Error: The <to> of a copy-out entry must be a path inside the job's working directory."
 }
