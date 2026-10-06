@@ -109,6 +109,23 @@ teardown() {
   assert_equal "$(cat backend/coverage/lcov.info)" "covered"
 }
 
+@test "copy-out asks for a from written with a trailing slash as it does any other" {
+  export BUILDKITE_PLUGIN_DOCKER_RUN_COPY_OUT_0="coverage/:coverage"
+
+  stub docker \
+    "pull ubuntu:24.04 : true" \
+    "create --name docker-run-buildkite-plugin-test-job-id --tty ubuntu:24.04 : true" \
+    "start --attach docker-run-buildkite-plugin-test-job-id : true" \
+    "${INSPECT_WORKDIR} docker-run-buildkite-plugin-test-job-id : echo /workdir" \
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage/. - : echo tar" \
+    "cp --follow-link docker-run-buildkite-plugin-test-job-id:/workdir/coverage/. coverage : mkdir \$4 && echo covered > \$4/lcov.info"
+
+  run "$PLUGIN_DIR/hooks/command"
+
+  assert_success
+  assert_equal "$(cat coverage/lcov.info)" "covered"
+}
+
 @test "copy-out copies a directory's contents into the working directory when to is ." {
   export BUILDKITE_PLUGIN_DOCKER_RUN_COPY_OUT_0="dist:."
   echo kept > .env
