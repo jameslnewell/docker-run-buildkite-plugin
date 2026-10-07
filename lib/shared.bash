@@ -49,3 +49,48 @@ plugin_read_list_into_result() {
   fi
   [[ ${#result[@]} -gt 0 ]]
 }
+
+# Copies one path out of a stopped container to `to` on the agent, a directory
+# as its contents. A `from` the container does not have is logged and skipped;
+# any other failure returns non-zero.
+plugin_copy_out() {
+  local container="$1"
+  local from="$2"
+  local to="$3"
+  local source="$from"
+  local copy_status=0
+
+  # `docker cp` puts a directory inside a `to` that already exists. Its contents
+  # are asked for instead (`/.`), which only a directory has. `docker cp` can't
+  # be asked what a path is, or whether it is there, and how it words a missing
+  # one varies between Docker versions. Asking for the path as a tar stream
+  # answers both: a byte only arrives when the path is there. None arrives when
+  # the container has gone or its filesystem can't be read either, so the path
+  # is only called missing if / does answer; otherwise the copy below fails with
+  # docker's own error.
+  #
+  # `--follow-link` here and on the copy: without it a `from` that is a symlink
+  # is copied as the link, which points nowhere useful on the agent.
+  if [[ -n "$(docker cp --follow-link "${container}:${from%/}/." - 2>/dev/null | head -c 1)" ]]; then
+    source="${from%/}/."
+  elif [[ -z "$(docker cp --follow-link "${container}:${from}" - 2>/dev/null | head -c 1)" \
+    && -n "$(docker cp "${container}:/" - 2>/dev/null | head -c 1)" ]]; then
+    echo "Skipped ${from}: not found in the container"
+    return 0
+  fi
+
+  # `docker cp` creates `to` but not the directory it is in.
+  mkdir -p "$(dirname "$to")" || copy_status=$?
+  if [[ "$copy_status" -eq 0 ]]; then
+    set -x
+    docker cp --follow-link "${container}:${source}" "$to" || { copy_status=$?; } 2>/dev/null
+    { set +x; } 2>/dev/null
+  fi
+
+  if [[ "$copy_status" -ne 0 ]]; then
+    echo "^^^ +++"
+    echo "Error: could not copy ${from} out of the container to ${to}"
+    return 1
+  fi
+  echo "Copied ${from} to ${to}"
+}

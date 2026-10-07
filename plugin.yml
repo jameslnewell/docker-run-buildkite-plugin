@@ -31,6 +31,9 @@ configuration:
     volumes:
       type: array
       description: "Volume mounts as host:container. Relative host paths (starting with .) are resolved against pwd."
+    copy-out:
+      type: array
+      description: "Paths to copy out of the container once the command exits, as from:to. A relative from is resolved against the container's working directory, and a relative to against the job's. A directory's contents are copied into to, and an existing to is merged into, not cleared. A from the container does not have is skipped. The copy runs in the same hook as the container."
     propagate-docker-daemon:
       type: boolean
       description: "Give the container access to the host Docker daemon, enabling Docker-from-Docker without userns:host. Mounts the socket named by DOCKER_HOST (default unix:///var/run/docker.sock); when DOCKER_HOST names a TCP daemon there is no socket to mount, so the variable is passed through instead."

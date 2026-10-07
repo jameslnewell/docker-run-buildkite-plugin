@@ -23,6 +23,7 @@ Options not defined in the Compose spec follow either the Docker CLI's naming or
 | `workdir` | `BUILDKITE_PLUGIN_DOCKER_RUN_WORKDIR` | Working directory in the container |
 | `shell` | `BUILDKITE_PLUGIN_DOCKER_RUN_SHELL` | Shell used to wrap the step's command |
 | `mount-checkout` | `BUILDKITE_PLUGIN_DOCKER_RUN_MOUNT_CHECKOUT` | Mount the agent checkout as the working directory |
+| `copy-out` | `BUILDKITE_PLUGIN_DOCKER_RUN_COPY_OUT` | Copy paths out of the stopped container, relative to its working directory. A directory's contents go into `to`, which is merged into, not cleared. A missing `from` is skipped |
 | `propagate-docker-daemon` | `BUILDKITE_PLUGIN_DOCKER_RUN_PROPAGATE_DOCKER_DAEMON` | Give the container access to the host Docker daemon |
 | `propagate-docker-config` | `BUILDKITE_PLUGIN_DOCKER_RUN_PROPAGATE_DOCKER_CONFIG` | Give the container the agent's registry credentials |
 | `propagate-docker` | `BUILDKITE_PLUGIN_DOCKER_RUN_PROPAGATE_DOCKER` | Deprecated alias for both of the above |
@@ -56,7 +57,7 @@ git clone https://github.com/buildkite-plugins/bats-mock "$(brew --prefix)/lib/b
 Unit tests (no Docker required):
 
 ```bash
-PATH="$(brew --prefix)/bin:$PATH" BATS_LIB_PATH="$(brew --prefix)/lib" bats tests/command.bats tests/pre-command.bats tests/pre-exit.bats
+PATH="$(brew --prefix)/bin:$PATH" BATS_LIB_PATH="$(brew --prefix)/lib" bats tests/command.bats tests/copy-out.bats tests/pre-command.bats tests/pre-exit.bats
 ```
 
 Integration tests (requires Docker):
